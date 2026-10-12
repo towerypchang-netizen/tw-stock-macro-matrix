@@ -92,10 +92,8 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             if symbol in raw_data.columns:
                 df[name] = raw_data[symbol]
         
-        # 針對可能出現 NaN 的項目做強制填充
         df = df.ffill().bfill()
         
-        # 若 DXY 仍有 NaN，直接補備援數據
         if 'DXY' not in df.columns or df['DXY'].isna().all():
             try:
                 df['DXY'] = yf.Ticker("DX-Y=F").history(period="3mo")['Close'].ffill()
@@ -162,7 +160,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.error(f"全球總經數據讀取失敗: {e}")
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (gemini-3.5-flash 推論)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (移除範例錨定，真實AI邏輯推論)
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)":
     st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
@@ -177,29 +175,46 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
             st.info("💡 請在左側欄位輸入 Gemini API Key（或至 Streamlit Secrets 設定），即可啟用 AI 總經動態推論功能。")
         else:
             if st.button("🚀 執行 AI 總經推論分析"):
-                with st.spinner("AI 正在分析全球總經數據、Fed 利率與國際情勢並進行 Top-Down 推論..."):
+                with st.spinner("AI 正在深度判讀美元、殖利率、VIX、原油、黃金與全球資金流向進行 Top-Down 邏輯推論..."):
                     try:
-                        macro_df = yf.download(["DX-Y=F", "^TNX", "^VIX", "CL=F", "GC=F", "^SOX"], period="5d")['Close'].ffill()
+                        macro_df = yf.download(["DX-Y=F", "^TNX", "^VIX", "CL=F", "GC=F", "^SOX", "^GSPC"], period="1mo")['Close'].ffill()
                         latest_m = macro_df.iloc[-1]
+                        prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
                         
+                        sox_chg = ((latest_m.get('^SOX', 5000) - prev_m.get('^SOX', 5000)) / prev_m.get('^SOX', 5000)) * 100
+                        vix_val = latest_m.get('^VIX', 15)
+                        dxy_val = latest_m.get('DX-Y=F', 103)
+                        us10y_val = latest_m.get('^TNX', 4.0)
+                        oil_val = latest_m.get('CL=F', 75)
+                        gold_val = latest_m.get('GC=F', 2600)
+
                         summary_prompt = f"""
-                        最新市場情勢數據：
-                        - 美元指數 DXY: {latest_m.get('DX-Y=F', 103):.2f}
-                        - 美國10年期公債殖利率: {latest_m.get('^TNX', 4.0):.2f}%
-                        - 恐慌指數 VIX: {latest_m.get('^VIX', 15):.2f}
-                        - 原油 CL=F: ${latest_m.get('CL=F', 75):.1f}
-                        - 黃金 GC=F: ${latest_m.get('GC=F', 2600):.1f}
-                        - 費城半導體 SOX: {latest_m.get('^SOX', 5000):.0f}
-                        
-                        請扮演頂尖法人的總經策略師，根據上述總經背景與資金偏好，推論當前最受惠的 3 個主流產業與台灣供應鏈。
-                        務必嚴格僅輸出標準 JSON 格式（不要包含 markdown 標籤或其餘文字），格式範例如下：
+                        你是頂尖法人的總經與產業策略總監。請徹底根據以下真實市場數據進行硬核 Top-Down 研研推論：
+
+                        【國際市場即時數據與近週變化】
+                        1. 費城半導體 SOX: {latest_m.get('^SOX', 5000):.0f} (近週變化: {sox_chg:+.2f}%)
+                        2. 恐慌指數 VIX: {vix_val:.2f}
+                        3. 美元指數 DXY: {dxy_val:.2f}
+                        4. 美國10年期公債殖利率: {us10y_val:.2f}%
+                        5. WTI 原油價格: ${oil_val:.1f}
+                        6. 黃金避險價格: ${gold_val:.1f}
+
+                        【嚴格推論規則】
+                        - 請分析上述數據反映的資金風險偏好 (Risk-On / Risk-Off / 避險 / 通膨預期)。
+                        - 依據當前情境（例如：若 VIX 或油價飆高，應偏向防禦/電網/軍工/能源；若 SOX 強勢且殖利率穩定，偏向半導體/AI/矽光子/伺服器；若殖利率過高，偏向低估值/現金流穩健產業）。
+                        - 動態篩選出當前最受惠的 3 個台灣主流產業鏈。
+                        - 每個產業鏈提供 2~3 檔台灣具備實質訂單轉換能力的代表上市/上櫃公司（包含公司簡稱與 4 位數股票代號）。
+                        - 嚴禁複製固定範例，必須完全根據上述真實數據進行全新邏輯推演！
+
+                        【輸出格式】
+                        必須僅輸出嚴格合法的 JSON 陣列，不得包含任何 Markdown 語法標籤（如 ```json），範例結構如下：
                         [
                           {{
-                            "industry": "產業名稱",
-                            "cycle": "S2: 訂單加速",
-                            "driver": "全球需求驅動說明",
-                            "bottleneck": "瓶頸與CapEx焦點",
-                            "stocks": [["台積電", "2330"], ["萬潤", "6187"]]
+                            "industry": "根據數據推論出的產業名稱",
+                            "cycle": "S1: 需求萌芽 或 S2: 訂單加速 或 S3: 獲利兌現",
+                            "driver": "結合上述數據變化的驅動邏輯說明",
+                            "bottleneck": "該產業目前的供應鏈瓶頸與 CapEx 焦點",
+                            "stocks": [["公司簡稱", "四位數代號"], ["公司簡稱", "四位數代號"]]
                           }}
                         ]
                         """
