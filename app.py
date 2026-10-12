@@ -18,10 +18,19 @@ st.set_page_config(
 st.title("📈 台股八階段預測與總經分析系統 APP")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
 
-# Sidebar 系統導覽與 API 金鑰設定
+# ---------------------------------------------------------
+# 2. 側邊欄（Sidebar）API Key 讀取邏輯微調
+# ---------------------------------------------------------
 st.sidebar.header("⚙️ 系統導覽與 API 設定")
 
-api_key = st.sidebar.text_input("Gemini API Key (用於工具2 AI動態推論)", type="password")
+# 優先讀取 Streamlit Cloud Secrets 中的 GEMINI_API_KEY
+default_api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+if default_api_key:
+    st.sidebar.success("🔑 已自動載入背景 API Key")
+    api_key = default_api_key
+else:
+    api_key = st.sidebar.text_input("Gemini API Key (用於工具2 AI動態推論)", type="password")
 
 selected_tool = st.sidebar.radio(
     "核心分析工具區",
@@ -120,12 +129,11 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
     
     if mode == "🤖 AI 總經即時動態推論":
         if not api_key:
-            st.info("💡 請在左側欄位輸入 Gemini API Key，即可啟用 AI 總經動態推論功能。")
+            st.info("💡 請在左側欄位輸入 Gemini API Key（或至 Streamlit Secrets 設定），即可啟用 AI 總經動態推論功能。")
         else:
             if st.button("🚀 執行 AI 總經推論分析"):
                 with st.spinner("AI 正在分析全球總經數據、Fed 利率與國際情勢並進行 Top-Down 推論..."):
                     try:
-                        # 擷取最新總經數據給 AI 作為情境依據
                         macro_df = yf.download(["DX=F", "^TNX", "^VIX", "CL=F", "GC=F", "^SOX"], period="5d")['Close'].ffill()
                         latest_m = macro_df.iloc[-1]
                         
