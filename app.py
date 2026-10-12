@@ -19,11 +19,10 @@ st.title("📈 台股八階段預測與總經分析系統 APP")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
 
 # ---------------------------------------------------------
-# 2. 側邊欄（Sidebar）API Key 讀取邏輯微調
+# 2. 側邊欄（Sidebar）API Key 讀取邏輯
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ 系統導覽與 API 設定")
 
-# 優先讀取 Streamlit Cloud Secrets 中的 GEMINI_API_KEY
 default_api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 if default_api_key:
@@ -117,7 +116,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.error(f"全球總經數據讀取失敗: {e}")
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 動態推論)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 動態推論 - 最新 Model API)
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)":
     st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
@@ -160,8 +159,15 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                         """
                         
                         genai.configure(api_key=api_key)
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                        res = model.generate_content(summary_prompt)
+                        
+                        # 使用最新版本的 Gemini 模型名稱與自動降級備援機制
+                        try:
+                            model = genai.GenerativeModel('gemini-2.5-flash')
+                            res = model.generate_content(summary_prompt)
+                        except Exception:
+                            model = genai.GenerativeModel('gemini-2.0-flash')
+                            res = model.generate_content(summary_prompt)
+                            
                         clean_text = res.text.replace("```json", "").replace("```", "").strip()
                         selected_matrix = json.loads(clean_text)
                         st.session_state['ai_matrix'] = selected_matrix
