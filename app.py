@@ -3,8 +3,12 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import datetime
+import json
+import google.generativeai as genai
 
+# ---------------------------------------------------------
 # 1. 頁面基本配置
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="台股預測分析系統 APP (v2)",
     page_icon="📈",
@@ -12,15 +16,18 @@ st.set_page_config(
 )
 
 st.title("📈 台股八階段預測與總經分析系統 APP")
-st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | 嚴禁 AI 杜撰數據")
+st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
 
-# Sidebar 系統導覽與八階段架構說明
-st.sidebar.header("⚙️ 系統導覽與八階段架構")
+# Sidebar 系統導覽與 API 金鑰設定
+st.sidebar.header("⚙️ 系統導覽與 API 設定")
+
+api_key = st.sidebar.text_input("Gemini API Key (用於工具2 AI動態推論)", type="password")
+
 selected_tool = st.sidebar.radio(
     "核心分析工具區",
     [
         "核心工具 1：全球資金與總經儀表板",
-        "核心工具 2：產業趨勢與台灣供應鏈矩陣",
+        "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)",
         "核心工具 3：個股基本面與 ROI 評分表"
     ]
 )
@@ -101,74 +108,104 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.error(f"全球總經數據讀取失敗: {e}")
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (動態選單與真實股價連線)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 動態推論)
 # ---------------------------------------------------------
-elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣":
+elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)":
     st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
-    st.write("追蹤全球需求驅動、瓶頸支出、台灣供應鏈與生命週期 (S1~S5)，連線 Yahoo Finance 驗證價量數據。")
+    st.write("根據國際大盤、殖利率、匯率、VIX 與國際情勢，由 AI 動態推論主流產業傳導矩陣，並連線 Yahoo Finance 驗證行情。")
+
+    mode = st.radio("模式選擇：", ["🤖 AI 總經即時動態推論", "📌 預設主流產業清單"])
     
-    # 1. 產業主題選單
-    industry_choice = st.selectbox(
-        "🎯 請選擇主流產業主題傳導矩陣：",
-        [
-            "🤖 AI 資料中心與先進封裝 (CoWoS / 散熱 / CPO)",
-            "⚡ 重電綠能與強韌電網 (變壓器 / 綠能 / 儲能)",
-            "🚗 車用半導體與矽光子 (車用晶片 / 功率元件)"
-        ]
-    )
+    selected_matrix = []
     
-    # 定義各產業動態數據結構
-    industry_db = {
-        "🤖 AI 資料中心與先進封裝 (CoWoS / 散熱 / CPO)": [
-            {"cycle": "S2: 訂單加速", "driver": "AI 晶片 / 雲端 CapEx", "bottleneck": "先進封裝 CoWoS", "stocks": [("台積電", "2330"), ("萬潤", "6187"), ("弘塑", "3131")]},
-            {"cycle": "S3: 獲利兌現", "driver": "高功耗散熱需求", "bottleneck": "水冷板 / CDP / 分歧管", "stocks": [("奇鋐", "3017"), ("雙鴻", "3324"), ("高力", "8996")]},
-            {"cycle": "S2: 訂單加速", "driver": "800G / 1.6T 網路架構", "bottleneck": "CPO 光收發模組 / 交換器", "stocks": [("智邦", "2345"), ("華星光", "4979")]}
-        ],
-        "⚡ 重電綠能與強韌電網 (變壓器 / 綠能 / 儲能)": [
-            {"cycle": "S3: 獲利兌現", "driver": "美國電網更新 / 台灣強韌電網", "bottleneck": "大型變壓器 / 配電盤", "stocks": [("華城", "1519"), ("士電", "1503"), ("中興電", "1513")]},
-            {"cycle": "S2: 訂單加速", "driver": "綠能發電 / 綠電憑證", "bottleneck": "儲能系統 / 案場建置", "stocks": [("森崴能源", "6806"), ("雲豹能源", "6869")]}
-        ],
-        "🚗 車用半導體與矽光子 (車用晶片 / 功率元件)": [
-            {"cycle": "S1: 需求萌芽", "driver": "SiC / GaN 功率器件", "bottleneck": "晶圓代工與封裝認證", "stocks": [("漢磊", "3707"), ("嘉晶", "3016")]},
-            {"cycle": "S2: 訂單加速", "driver": "矽光子 CPO 共同封裝", "bottleneck": "光電共封裝測試門檻", "stocks": [("台積電", "2330"), ("聯亞", "3081")]}
-        ]
-    }
-    
-    selected_matrix = industry_db.get(industry_choice, [])
-    
-    st.markdown("---")
-    st.subheader(f"📌 {industry_choice.split(' ')[0]} 產業鏈傳導與受惠股即時狀態")
-    
-    for row in selected_matrix:
-        with st.expander(f"🔹 【{row['cycle']}】{row['driver']} ➔ 瓶頸焦點：{row['bottleneck']}", expanded=True):
-            st.markdown(f"**產業生命週期**：`{row['cycle']}`")
-            st.markdown(f"**全球需求驅動**：{row['driver']}")
-            st.markdown(f"**關鍵瓶頸與CapEx支出**：{row['bottleneck']}")
+    if mode == "🤖 AI 總經即時動態推論":
+        if not api_key:
+            st.info("💡 請在左側欄位輸入 Gemini API Key，即可啟用 AI 總經動態推論功能。")
+        else:
+            if st.button("🚀 執行 AI 總經推論分析"):
+                with st.spinner("AI 正在分析全球總經數據、Fed 利率與國際情勢並進行 Top-Down 推論..."):
+                    try:
+                        # 擷取最新總經數據給 AI 作為情境依據
+                        macro_df = yf.download(["DX=F", "^TNX", "^VIX", "CL=F", "GC=F", "^SOX"], period="5d")['Close'].ffill()
+                        latest_m = macro_df.iloc[-1]
+                        
+                        summary_prompt = f"""
+                        最新市場情勢數據：
+                        - 美元指數 DXY: {latest_m.get('DX=F', 103):.2f}
+                        - 美國10年期公債殖利率: {latest_m.get('^TNX', 4.0):.2f}%
+                        - 恐慌指數 VIX: {latest_m.get('^VIX', 15):.2f}
+                        - 原油 CL=F: ${latest_m.get('CL=F', 75):.1f}
+                        - 黃金 GC=F: ${latest_m.get('GC=F', 2600):.1f}
+                        - 費城半導體 SOX: {latest_m.get('^SOX', 5000):.0f}
+                        
+                        請扮演頂尖法人的總經策略師，根據上述總經背景與資金偏好，推論當前最受惠的 3 個主流產業與台灣供應鏈。
+                        務必嚴格僅輸出標準 JSON 格式（不要包含 markdown 標籤或其餘文字），格式範例如下：
+                        [
+                          {{
+                            "industry": "產業名稱",
+                            "cycle": "S2: 訂單加速",
+                            "driver": "全球需求驅動說明",
+                            "bottleneck": "瓶頸與CapEx焦點",
+                            "stocks": [["台積電", "2330"], ["萬潤", "6187"]]
+                          }}
+                        ]
+                        """
+                        
+                        genai.configure(api_key=api_key)
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        res = model.generate_content(summary_prompt)
+                        clean_text = res.text.replace("```json", "").replace("```", "").strip()
+                        selected_matrix = json.loads(clean_text)
+                        st.session_state['ai_matrix'] = selected_matrix
+                    except Exception as e:
+                        st.error(f"AI 推論失敗: {e}")
             
-            # 連線 Yahoo Finance 抓取該環節成分股真實價量
-            cols = st.columns(len(row['stocks']))
-            for idx, (s_name, s_code) in enumerate(row['stocks']):
-                with cols[idx]:
-                    price, chg_pct = None, None
-                    for suffix in [".TW", ".TWO"]:
-                        try:
-                            t = yf.Ticker(f"{s_code}{suffix}")
-                            h = t.history(period="1mo")
-                            if not h.empty:
-                                price = h['Close'].iloc[-1]
-                                chg_pct = ((price - h['Close'].iloc[0]) / h['Close'].iloc[0]) * 100
-                                break
-                        except Exception:
-                            pass
-                    
-                    if price:
-                        st.metric(
-                            label=f"{s_name} ({s_code})",
-                            value=f"${price:.1f} 元",
-                            delta=f"近1月 {chg_pct:+.1f}%"
-                        )
-                    else:
-                        st.metric(label=f"{s_name} ({s_code})", value="讀取中...")
+            if 'ai_matrix' in st.session_state:
+                selected_matrix = st.session_state['ai_matrix']
+
+    else:
+        # 預設範例清單
+        selected_matrix = [
+            {"industry": "AI 資料中心與先進封裝", "cycle": "S2: 訂單加速", "driver": "AI 晶片 / 雲端 CapEx", "bottleneck": "先進封裝 CoWoS", "stocks": [["台積電", "2330"], ["萬潤", "6187"], ["弘塑", "3131"]]},
+            {"industry": "高效能水冷散熱", "cycle": "S3: 獲利兌現", "driver": "高功耗伺服器散熱", "bottleneck": "水冷板 / CDP / 分歧管", "stocks": [["奇鋐", "3017"], ["雙鴻", "3324"], ["高力", "8996"]]},
+            {"industry": "強韌電網與重電設備", "cycle": "S3: 獲利兌現", "driver": "美國電網更新 / 台灣電網", "bottleneck": "大型變壓器", "stocks": [["華城", "1519"], ["士電", "1503"]]}]
+
+    if selected_matrix:
+        st.markdown("---")
+        st.subheader("📌 主流產業鏈傳導與受惠股即時行情驗證")
+        
+        for row in selected_matrix:
+            with st.expander(f"🔹 【{row.get('cycle', 'S2')}】{row.get('industry', '主流產業')} ➔ 驅動：{row.get('driver', '')}", expanded=True):
+                st.markdown(f"**產業生命週期**：`{row.get('cycle')}`")
+                st.markdown(f"**全球需求驅動**：{row.get('driver')}")
+                st.markdown(f"**關鍵瓶頸與 CapEx**：{row.get('bottleneck')}")
+                
+                stocks = row.get('stocks', [])
+                if stocks:
+                    cols = st.columns(len(stocks))
+                    for idx, s_item in enumerate(stocks):
+                        s_name, s_code = s_item[0], s_item[1]
+                        with cols[idx]:
+                            price, chg_pct = None, None
+                            for suffix in [".TW", ".TWO"]:
+                                try:
+                                    t = yf.Ticker(f"{s_code}{suffix}")
+                                    h = t.history(period="1mo")
+                                    if not h.empty:
+                                        price = float(h['Close'].iloc[-1])
+                                        chg_pct = float(((price - h['Close'].iloc[0]) / h['Close'].iloc[0]) * 100)
+                                        break
+                                except Exception:
+                                    pass
+                            
+                            if price:
+                                st.metric(
+                                    label=f"{s_name} ({s_code})",
+                                    value=f"${price:.1f} 元",
+                                    delta=f"近1月 {chg_pct:+.1f}%"
+                                )
+                            else:
+                                st.metric(label=f"{s_name} ({s_code})", value="讀取中...")
 
 # ---------------------------------------------------------
 # 工具 3：個股基本面與 ROI 評分表
