@@ -39,7 +39,6 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
     st.header("🌐 核心工具 1：全球資金與總經儀表板")
     st.write("每日追蹤主要市場、美元、殖利率、VIX、台幣與外資流向，計算全球資金環境評分。")
 
-    # 抓取數據模組
     @st.cache_data(ttl=3600)
     def load_macro_data():
         tickers = {
@@ -55,10 +54,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             'Nikkei': '^N225'      # 日經 225
         }
         
-        # 下載歷史數據
         raw_data = yf.download(list(tickers.values()), period="3mo", interval="1d")['Close']
-        
-        # 欄位重組與補值
         df = pd.DataFrame()
         for name, symbol in tickers.items():
             if symbol in raw_data.columns:
@@ -73,7 +69,6 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             latest = df_macro.iloc[-1]
             prev = df_macro.iloc[-2]
             
-            # Key Metrics 顯示欄位
             col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("美元指數 DXY", f"{latest['DXY']:.2f}", f"{(latest['DXY']-prev['DXY']):.2f}")
             col2.metric("美債 10Y 殖利率", f"{latest['US10Y']:.2f}%", f"{(latest['US10Y']-prev['US10Y']):.2f}%")
@@ -84,7 +79,6 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.markdown("---")
             st.subheader("📊 全球資金環境評分模型（初版）")
             
-            # 簡易量化算分
             score_vix = max(0, min(100, (30 - latest['VIX']) * 5))
             score_dxy = max(0, min(100, (108 - latest['DXY']) * 10))
             score_twd = max(0, min(100, (33 - latest['TWD']) * 20))
@@ -124,45 +118,68 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣":
     st.table(pd.DataFrame(matrix_data))
 
 # ---------------------------------------------------------
-# 工具 3：個股基本面與 ROI 評分表
+# 工具 3：個股基本面與 ROI 評分表（自動連線 Yahoo Finance 抓股價）
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
     st.header("📊 核心工具 3：個股基本面與 ROI 評分表")
     st.write("每月更新財務、EPS、估值區間、籌碼與三情境 ROI 分析。")
     
-    stock_id = st.text_input("請輸入台股代號（例如：2330）：", "2330")
-    if stock_id:
-        st.subheader(f"🔍 個股基本面與三情境 ROI 試算表（代號：{stock_id}）")
+    stock_code = st.text_input("請輸入台股代號（例如：6187 或 2330）：", "6187")
+    
+    if stock_code:
+        # 自動判定上市 (.TW) 或上櫃 (.TWO) 抓取最新股價
+        fetched_price = None
+        stock_name = ""
+        
+        with st.spinner(f"連線 Yahoo Finance 擷取 {stock_code} 最新真實股價中..."):
+            for suffix in [".TWO", ".TW"]:
+                try:
+                    ticker = yf.Ticker(f"{stock_code}{suffix}")
+                    hist = ticker.history(period="5d")
+                    if not hist.empty:
+                        fetched_price = float(hist['Close'].iloc[-1])
+                        break
+                except Exception:
+                    pass
+        
+        if fetched_price:
+            st.success(f"✅ 連線成功！{stock_code} 最新真實收盤價： **${fetched_price:.2f} 元**")
+            current_price = fetched_price
+        else:
+            st.warning("⚠️ 未能自動取得股價，請手動確認或調整股價。")
+            current_price = 1000.0
+
+        st.subheader(f"🔍 個股基本面與三情境 ROI 試算表（代號：{stock_code}）")
         
         # 三情境估值輸入 UI
         col_bear, col_base, col_bull = st.columns(3)
         with col_bear:
             st.markdown("##### 🔴 悲觀情境 (Prob: 20%)")
-            eps_bear = st.number_input("悲觀 12M EPS", value=42.0)
+            eps_bear = st.number_input("悲觀 12M EPS", value=15.0)
             pe_bear = st.number_input("悲觀 PE 倍數", value=18.0)
         
         with col_base:
             st.markdown("##### 🟡 基準情境 (Prob: 60%)")
-            eps_base = st.number_input("基準 12M EPS", value=50.0)
+            eps_base = st.number_input("基準 12M EPS", value=20.0)
             pe_base = st.number_input("基準 PE 倍數", value=22.0)
             
         with col_bull:
             st.markdown("##### 🟢 樂觀情境 (Prob: 20%)")
-            eps_bull = st.number_input("樂觀 12M EPS", value=58.0)
-            pe_bull = st.number_input("樂觀 PE 倍數", value=25.0)
+            eps_bull = st.number_input("樂觀 12M EPS", value=25.0)
+            pe_bull = st.number_input("樂觀 PE 倍數", value=26.0)
 
-        current_price = st.number_input("個股當前股價 (元)", value=1000.0)
-        cash_div = st.number_input("預估未來一年現金股利 (元)", value=16.0)
+        real_price_input = st.number_input("個股當前股價 (元) [已自動同步最新價]", value=current_price)
+        cash_div = st.number_input("預估未來一年現金股利 (元)", value=5.0)
         
         # 計算各情境 ROI
         target_bear = eps_bear * pe_bear
-        roi_bear = ((target_bear + cash_div - current_price) / current_price) * 100
+        roi_bear = ((target_bear + cash_div - real_price_input) / real_price_input) * 100
         
         target_base = eps_base * pe_base
-        roi_base = ((target_base + cash_div - current_price) / current_price) * 100
+        roi_base = ((target_base + cash_div - real_price_input) / real_price_input) * 100
         
         target_bull = eps_bull * pe_bull
-        roi_bull = ((target_bull + cash_div - current_price) / current_price) * 100
+        roi_bull = ((target_bull + cash_div - real_price_input) / real_price_input) * 100
         
         expected_roi = (roi_bear * 0.2) + (roi_base * 0.6) + (roi_bull * 0.2)
         
