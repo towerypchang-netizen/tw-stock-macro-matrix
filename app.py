@@ -45,7 +45,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         tickers = {
             'SOX': '^SOX',         # 費城半導體
             'S&P500': '^GSPC',     # S&P 500
-            'DXY': 'DX=F',         # 美元指數 (修復為 DX=F)
+            'DXY': 'DX=F',         # 美元指數
             'US10Y': '^TNX',       # 10年期公債殖利率
             'US2Y': '^IRX',        # 2年期公債殖利率
             'VIX': '^VIX',         # 恐慌指數
@@ -84,14 +84,13 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.markdown("---")
             st.subheader("📊 全球資金環境評分模型（初版）")
             
-            # 簡易量化算分（25% 利率流動性, 20% 美元, 20% 股市趨勢, 15% VIX, 10% 地緣原油, 10% 台幣）
-            # 數值越低/趨勢越穩，得分越高
+            # 簡易量化算分
             score_vix = max(0, min(100, (30 - latest['VIX']) * 5))
             score_dxy = max(0, min(100, (108 - latest['DXY']) * 10))
             score_twd = max(0, min(100, (33 - latest['TWD']) * 20))
             score_sox = 70 if latest['SOX'] > df_macro['SOX'].mean() else 40
             
-            total_score = (score_dxy * 0.20) + (score_sox * 0.20) + (score_vix * 0.15) + (score_twd * 0.10) + 25  # 基礎分調和
+            total_score = (score_dxy * 0.20) + (score_sox * 0.20) + (score_vix * 0.15) + (score_twd * 0.10) + 25
             
             st.metric("全球資金環境綜合評分 (0-100)", f"{total_score:.1f} 分")
             if total_score >= 65:
@@ -118,7 +117,7 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣":
     matrix_data = {
         "產業生命週期": ["S2: 訂單加速", "S3: 獲利兌現", "S2: 訂單加速", "S4: 預期成熟"],
         "全球需求驅動": ["AI 運算 / 雲端 CapEx", "伺服器散熱升級", "高階網通 / 800G", "先進封裝 CoWoS"],
-        "產業瓶頸與支出", ["GPU / HBM / 電源", "水冷散熱模組", "CPO / 交換器", "台積電產能擴充"],
+        "產業瓶頸與支出": ["GPU / HBM / 電源", "水冷散熱模組", "CPO / 交換器", "台積電產能擴充"],
         "台灣供應鏈代表公司": ["台積電 (2330), 鴻海 (2317)", "奇鋐 (3017), 雙鴻 (3324)", "智邦 (2345)", "萬潤 (6187), 弘塑 (3131)"],
         "驗證指標 (MOPS)": ["月營收 YoY > 20%", "毛利率 QoQ 提升", "合約負債與存貨周轉", "設備出貨與 CapEx"]
     }
