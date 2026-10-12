@@ -101,24 +101,77 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.error(f"全球總經數據讀取失敗: {e}")
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (動態選單與真實股價連線)
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣":
     st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
-    st.write("每週追蹤需求、資本支出、訂單、產能及受惠公司（區分生命週期 S1~S5）。")
+    st.write("追蹤全球需求驅動、瓶頸支出、台灣供應鏈與生命週期 (S1~S5)，連線 Yahoo Finance 驗證價量數據。")
     
-    st.subheader("📌 主流產業趨勢傳導表（以 AI 資料中心為例）")
-    matrix_data = {
-        "產業生命週期": ["S2: 訂單加速", "S3: 獲利兌現", "S2: 訂單加速", "S4: 預期成熟"],
-        "全球需求驅動": ["AI 運算 / 雲端 CapEx", "伺服器散熱升級", "高階網通 / 800G", "先進封裝 CoWoS"],
-        "產業瓶頸與支出": ["GPU / HBM / 電源", "水冷散熱模組", "CPO / 交換器", "台積電產能擴充"],
-        "台灣供應鏈代表公司": ["台積電 (2330), 鴻海 (2317)", "奇鋐 (3017), 雙鴻 (3324)", "智邦 (2345)", "萬潤 (6187), 弘塑 (3131)"],
-        "驗證指標 (MOPS)": ["月營收 YoY > 20%", "毛利率 QoQ 提升", "合約負債與存貨周轉", "設備出貨與 CapEx"]
+    # 1. 產業主題選單
+    industry_choice = st.selectbox(
+        "🎯 請選擇主流產業主題傳導矩陣：",
+        [
+            "🤖 AI 資料中心與先進封裝 (CoWoS / 散熱 / CPO)",
+            "⚡ 重電綠能與強韌電網 (變壓器 / 綠能 / 儲能)",
+            "🚗 車用半導體與矽光子 (車用晶片 / 功率元件)"
+        ]
+    )
+    
+    # 定義各產業動態數據結構
+    industry_db = {
+        "🤖 AI 資料中心與先進封裝 (CoWoS / 散熱 / CPO)": [
+            {"cycle": "S2: 訂單加速", "driver": "AI 晶片 / 雲端 CapEx", "bottleneck": "先進封裝 CoWoS", "stocks": [("台積電", "2330"), ("萬潤", "6187"), ("弘塑", "3131")]},
+            {"cycle": "S3: 獲利兌現", "driver": "高功耗散熱需求", "bottleneck": "水冷板 / CDP / 分歧管", "stocks": [("奇鋐", "3017"), ("雙鴻", "3324"), ("高力", "8996")]},
+            {"cycle": "S2: 訂單加速", "driver": "800G / 1.6T 網路架構", "bottleneck": "CPO 光收發模組 / 交換器", "stocks": [("智邦", "2345"), ("華星光", "4979")]}
+        ],
+        "⚡ 重電綠能與強韌電網 (變壓器 / 綠能 / 儲能)": [
+            {"cycle": "S3: 獲利兌現", "driver": "美國電網更新 / 台灣強韌電網", "bottleneck": "大型變壓器 / 配電盤", "stocks": [("華城", "1519"), ("士電", "1503"), ("中興電", "1513")]},
+            {"cycle": "S2: 訂單加速", "driver": "綠能發電 / 綠電憑證", "bottleneck": "儲能系統 / 案場建置", "stocks": [("森崴能源", "6806"), ("雲豹能源", "6869")]}
+        ],
+        "🚗 車用半導體與矽光子 (車用晶片 / 功率元件)": [
+            {"cycle": "S1: 需求萌芽", "driver": "SiC / GaN 功率器件", "bottleneck": "晶圓代工與封裝認證", "stocks": [("漢磊", "3707"), ("嘉晶", "3016")]},
+            {"cycle": "S2: 訂單加速", "driver": "矽光子 CPO 共同封裝", "bottleneck": "光電共封裝測試門檻", "stocks": [("台積電", "2330"), ("聯亞", "3081")]}
+        ]
     }
-    st.table(pd.DataFrame(matrix_data))
+    
+    selected_matrix = industry_db.get(industry_choice, [])
+    
+    st.markdown("---")
+    st.subheader(f"📌 {industry_choice.split(' ')[0]} 產業鏈傳導與受惠股即時狀態")
+    
+    for row in selected_matrix:
+        with st.expander(f"🔹 【{row['cycle']}】{row['driver']} ➔ 瓶頸焦點：{row['bottleneck']}", expanded=True):
+            st.markdown(f"**產業生命週期**：`{row['cycle']}`")
+            st.markdown(f"**全球需求驅動**：{row['driver']}")
+            st.markdown(f"**關鍵瓶頸與CapEx支出**：{row['bottleneck']}")
+            
+            # 連線 Yahoo Finance 抓取該環節成分股真實價量
+            cols = st.columns(len(row['stocks']))
+            for idx, (s_name, s_code) in enumerate(row['stocks']):
+                with cols[idx]:
+                    price, chg_pct = None, None
+                    for suffix in [".TW", ".TWO"]:
+                        try:
+                            t = yf.Ticker(f"{s_code}{suffix}")
+                            h = t.history(period="1mo")
+                            if not h.empty:
+                                price = h['Close'].iloc[-1]
+                                chg_pct = ((price - h['Close'].iloc[0]) / h['Close'].iloc[0]) * 100
+                                break
+                        except Exception:
+                            pass
+                    
+                    if price:
+                        st.metric(
+                            label=f"{s_name} ({s_code})",
+                            value=f"${price:.1f} 元",
+                            delta=f"近1月 {chg_pct:+.1f}%"
+                        )
+                    else:
+                        st.metric(label=f"{s_name} ({s_code})", value="讀取中...")
 
 # ---------------------------------------------------------
-# 工具 3：個股基本面與 ROI 評分表（自動連線擷取真實基本面）
+# 工具 3：個股基本面與 ROI 評分表
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
     st.header("📊 核心工具 3：個股基本面與 ROI 評分表")
@@ -129,7 +182,6 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
     if stock_code:
         fetched_price = None
         trailing_eps = None
-        forward_pe = None
         
         with st.spinner(f"連線 Yahoo Finance 擷取 {stock_code} 最新真實財務數據中..."):
             for suffix in [".TWO", ".TW"]:
@@ -140,7 +192,6 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
                     if not hist.empty:
                         fetched_price = float(hist['Close'].iloc[-1])
                         trailing_eps = info.get('trailingEps', None)
-                        forward_pe = info.get('forwardPE', None)
                         break
                 except Exception:
                     pass
@@ -152,13 +203,11 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
             st.warning("⚠️ 未能自動取得股價，請手動確認。")
             current_price = 1000.0
 
-        # 計算合理的預設 EPS 與 PE 區間（若有真實 EPS 則自動計算）
         base_eps_val = float(trailing_eps) if trailing_eps and trailing_eps > 0 else round(current_price / 25.0, 2)
         base_pe_val = round(current_price / base_eps_val, 1) if base_eps_val > 0 else 25.0
         
         st.subheader(f"🔍 個股基本面與三情境 ROI 試算表（代號：{stock_code}）")
         
-        # 三情境估值動態輸入 UI
         col_bear, col_base, col_bull = st.columns(3)
         with col_bear:
             st.markdown("##### 🔴 悲觀情境 (Prob: 20%)")
@@ -178,7 +227,6 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
         real_price_input = st.number_input("個股當前股價 (元) [自動同步最新價]", value=current_price)
         cash_div = st.number_input("預估未來一年現金股利 (元)", value=round(base_eps_val * 0.6, 1))
         
-        # 計算各情境 ROI
         target_bear = eps_bear * pe_bear
         roi_bear = ((target_bear + cash_div - real_price_input) / real_price_input) * 100
         
