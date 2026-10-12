@@ -7,13 +7,22 @@ import json
 import google.generativeai as genai
 
 # ---------------------------------------------------------
-# 1. 頁面基本配置
+# 1. 頁面基本配置與 CSS 樣式微調 (台股習慣：紅漲綠跌)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="台股預測分析系統 APP (v2)",
     page_icon="📈",
     layout="wide"
 )
+
+# 注入 CSS 讓 Streamlit metric 的 delta 上漲顯示紅字、下跌顯示綠字 (符合台股習慣)
+st.markdown("""
+<style>
+[data-testid="stMetricDelta"] svg {
+    display: none;
+}
+</style>
+""", unsafe_allow_html=True)
 
 st.title("📈 台股八階段預測與總經分析系統 APP")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
@@ -84,12 +93,23 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             latest = df_macro.iloc[-1]
             prev = df_macro.iloc[-2]
             
+            # 自訂顯示台股慣用顏色 (上漲為紅色、下跌為綠色)
+            def format_delta_tw(val):
+                if val > 0:
+                    return f"▲ +{val:.2f}"
+                elif val < 0:
+                    return f"▼ {val:.2f}"
+                else:
+                    return "0.00"
+
             col1, col2, col3, col4, col5 = st.columns(5)
-            col1.metric("美元指數 DXY", f"{latest['DXY']:.2f}", f"{(latest['DXY']-prev['DXY']):.2f}")
-            col2.metric("美債 10Y 殖利率", f"{latest['US10Y']:.2f}%", f"{(latest['US10Y']-prev['US10Y']):.2f}%")
-            col3.metric("台幣匯率 USD/TWD", f"{latest['TWD']:.2f}", f"{(latest['TWD']-prev['TWD']):.2f}")
-            col4.metric("費城半導體 SOX", f"{latest['SOX']:.0f}", f"{(latest['SOX']-prev['SOX']):.1f}")
-            col5.metric("恐慌指數 VIX", f"{latest['VIX']:.2f}", f"{(latest['VIX']-prev['VIX']):.2f}")
+            
+            # delta_color="inverse" 讓原本預設為正數綠色的改為紅色
+            col1.metric("美元指數 DXY", f"{latest['DXY']:.2f}", format_delta_tw(latest['DXY']-prev['DXY']), delta_color="inverse")
+            col2.metric("美債 10Y 殖利率", f"{latest['US10Y']:.2f}%", format_delta_tw(latest['US10Y']-prev['US10Y']), delta_color="inverse")
+            col3.metric("台幣匯率 USD/TWD", f"{latest['TWD']:.2f}", format_delta_tw(latest['TWD']-prev['TWD']), delta_color="inverse")
+            col4.metric("費城半導體 SOX", f"{latest['SOX']:.0f}", format_delta_tw(latest['SOX']-prev['SOX']), delta_color="inverse")
+            col5.metric("恐慌指數 VIX", f"{latest['VIX']:.2f}", format_delta_tw(latest['VIX']-prev['VIX']), delta_color="inverse")
 
             st.markdown("---")
             st.subheader("📊 全球資金環境評分模型（初版）")
@@ -103,11 +123,11 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             
             st.metric("全球資金環境綜合評分 (0-100)", f"{total_score:.1f} 分")
             if total_score >= 65:
-                st.success("🟢 目前資金環境偏向「風險承擔 (Risk-On)」，有利於科技股與台股表現。")
+                st.success("🔴 目前資金環境偏向「風險承擔 (Risk-On)」，有利於科技股與台股多頭表現。")
             elif total_score >= 45:
                 st.warning("🟡 目前資金環境偏向「風險中性」，宜關注個股基本面營收與季報表現。")
             else:
-                st.error("🔴 目前資金環境偏向「風險規避 (Risk-Off)」，建議提高防禦持股與現金比重。")
+                st.error("🟢 目前資金環境偏向「風險規避 (Risk-Off)」，建議提高防禦持股與現金比重。")
 
             st.subheader("📈 國際重要指標近期走勢圖")
             st.line_chart(df_macro[['SOX', 'DXY', 'VIX', 'TWD']].tail(30))
@@ -116,7 +136,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             st.error(f"全球總經數據讀取失敗: {e}")
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 動態推論 - 最新 Model API)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (gemini-3.5-flash 推論)
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)":
     st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
@@ -159,14 +179,8 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                         """
                         
                         genai.configure(api_key=api_key)
-                        
-                        # 使用最新版本的 Gemini 模型名稱與自動降級備援機制
-                        try:
-                            model = genai.GenerativeModel('gemini-3.5-flash')
-                            res = model.generate_content(summary_prompt)
-                        except Exception:
-                            model = genai.GenerativeModel('gemini-2.0-flash')
-                            res = model.generate_content(summary_prompt)
+                        model = genai.GenerativeModel('gemini-3.5-flash')
+                        res = model.generate_content(summary_prompt)
                             
                         clean_text = res.text.replace("```json", "").replace("```", "").strip()
                         selected_matrix = json.loads(clean_text)
@@ -213,10 +227,12 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                                     pass
                             
                             if price:
+                                chg_text = f"▲ +{chg_pct:.1f}%" if chg_pct > 0 else f"▼ {chg_pct:.1f}%"
                                 st.metric(
                                     label=f"{s_name} ({s_code})",
                                     value=f"${price:.1f} 元",
-                                    delta=f"近1月 {chg_pct:+.1f}%"
+                                    delta=f"近1月 {chg_text}",
+                                    delta_color="inverse"  # 台股慣用紅漲綠跌
                                 )
                             else:
                                 st.metric(label=f"{s_name} ({s_code})", value="讀取中...")
@@ -261,7 +277,7 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
         
         col_bear, col_base, col_bull = st.columns(3)
         with col_bear:
-            st.markdown("##### 🔴 悲觀情境 (Prob: 20%)")
+            st.markdown("##### 🟢 悲觀情境 (Prob: 20%)")
             eps_bear = st.number_input("悲觀 12M EPS", value=round(base_eps_val * 0.85, 2))
             pe_bear = st.number_input("悲觀 PE 倍數", value=max(10.0, round(base_pe_val * 0.85, 1)))
         
@@ -271,7 +287,7 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
             pe_base = st.number_input("基準 PE 倍數", value=round(base_pe_val, 1))
             
         with col_bull:
-            st.markdown("##### 🟢 樂觀情境 (Prob: 20%)")
+            st.markdown("##### 🔴 樂觀情境 (Prob: 20%)")
             eps_bull = st.number_input("樂觀 12M EPS", value=round(base_eps_val * 1.20, 2))
             pe_bull = st.number_input("樂觀 PE 倍數", value=round(base_pe_val * 1.15, 1))
 
@@ -292,7 +308,9 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
         st.markdown("---")
         st.subheader("💡 三情境評估結果")
         res_col1, res_col2, res_col3, res_col4 = st.columns(4)
-        res_col1.metric("悲觀目標價 / ROI", f"${target_bear:.1f}", f"{roi_bear:.1f}%")
-        res_col2.metric("基準目標價 / ROI", f"${target_base:.1f}", f"{roi_base:.1f}%")
-        res_col3.metric("樂觀目標價 / ROI", f"${target_bull:.1f}", f"{roi_bull:.1f}%")
-        res_col4.metric("加權期望 ROI", f"{expected_roi:.1f}%")
+        
+        # 調整 delta_color 使其符合台股上漲紅/下跌綠
+        res_col1.metric("悲觀目標價 / ROI", f"${target_bear:.1f}", f"{roi_bear:+.1f}%", delta_color="inverse")
+        res_col2.metric("基準目標價 / ROI", f"${target_base:.1f}", f"{roi_base:+.1f}%", delta_color="inverse")
+        res_col3.metric("樂觀目標價 / ROI", f"${target_bull:.1f}", f"{roi_bull:+.1f}%", delta_color="inverse")
+        res_col4.metric("加權期望 ROI", f"{expected_roi:.1f}%", f"{expected_roi:+.1f}%", delta_color="inverse")
