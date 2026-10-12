@@ -162,7 +162,7 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                         
                         # 使用最新版本的 Gemini 模型名稱與自動降級備援機制
                         try:
-                            model = genai.GenerativeModel('gemini-2.5-flash')
+                            model = genai.GenerativeModel('gemini-3.5-flash')
                             res = model.generate_content(summary_prompt)
                         except Exception:
                             model = genai.GenerativeModel('gemini-2.0-flash')
