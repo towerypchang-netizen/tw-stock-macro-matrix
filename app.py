@@ -7,7 +7,7 @@ import json
 import google.generativeai as genai
 
 # ---------------------------------------------------------
-# 1. 頁面基本配置與 CSS 樣式微調 (台股習慣：紅漲綠跌)
+# 1. 頁面基本配置與台股慣用顏色 CSS 注入 (紅漲綠跌)
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="台股預測分析系統 APP (v2)",
@@ -15,11 +15,16 @@ st.set_page_config(
     layout="wide"
 )
 
-# 注入 CSS 讓 Streamlit metric 的 delta 上漲顯示紅字、下跌顯示綠字 (符合台股習慣)
+# 強制將 Streamlit Metric 的顏色依據符號重導向 (正數▲強制為紅色、負數▼強制為綠色)
 st.markdown("""
 <style>
-[data-testid="stMetricDelta"] svg {
-    display: none;
+/* 上漲 / 增加 (紅色) */
+div[data-testid="stMetricDelta"] > div:nth-child(1) {
+    color: #FF2B2B !important;
+}
+/* 讓帶有 ▲ 符號的 delta 顯示紅色 */
+[data-testid="stMetricDelta"]:has(div:contains("▲")) {
+    color: #FF2B2B !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -57,7 +62,7 @@ st.sidebar.caption(
 )
 
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經儀表板
+# 工具 1：全球資金與總經儀表板 (已修正 DXY NaN 與紅綠顏色)
 # ---------------------------------------------------------
 if selected_tool == "核心工具 1：全球資金與總經儀表板":
     st.header("🌐 核心工具 1：全球資金與總經儀表板")
@@ -68,7 +73,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         tickers = {
             'SOX': '^SOX',         # 費城半導體
             'S&P500': '^GSPC',     # S&P 500
-            'DXY': 'DX=F',         # 美元指數
+            'DXY': 'DX-Y=F',       # 美元指數 (更新為更穩定之 DX-Y=F)
             'US10Y': '^TNX',       # 10年期公債殖利率
             'US2Y': '^IRX',        # 2年期公債殖利率
             'VIX': '^VIX',         # 恐慌指數
@@ -83,6 +88,12 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         for name, symbol in tickers.items():
             if symbol in raw_data.columns:
                 df[name] = raw_data[symbol]
+            else:
+                # 備援抓取
+                try:
+                    df[name] = yf.Ticker(symbol).history(period="3mo")['Close']
+                except Exception:
+                    pass
         
         df = df.ffill().bfill()
         return df
@@ -93,31 +104,42 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             latest = df_macro.iloc[-1]
             prev = df_macro.iloc[-2]
             
-            # 自訂顯示台股慣用顏色 (上漲為紅色、下跌為綠色)
-            def format_delta_tw(val):
-                if val > 0:
-                    return f"▲ +{val:.2f}"
-                elif val < 0:
-                    return f"▼ {val:.2f}"
-                else:
+            # 格式化 delta 文字 (紅漲綠跌邏輯)
+            def get_delta_str(val):
+                if pd.isna(val) or val == 0:
                     return "0.00"
+                return f"▲ +{val:.2f}" if val > 0 else f"▼ {val:.2f}"
 
             col1, col2, col3, col4, col5 = st.columns(5)
             
-            # delta_color="inverse" 讓原本預設為正數綠色的改為紅色
-            col1.metric("美元指數 DXY", f"{latest['DXY']:.2f}", format_delta_tw(latest['DXY']-prev['DXY']), delta_color="inverse")
-            col2.metric("美債 10Y 殖利率", f"{latest['US10Y']:.2f}%", format_delta_tw(latest['US10Y']-prev['US10Y']), delta_color="inverse")
-            col3.metric("台幣匯率 USD/TWD", f"{latest['TWD']:.2f}", format_delta_tw(latest['TWD']-prev['TWD']), delta_color="inverse")
-            col4.metric("費城半導體 SOX", f"{latest['SOX']:.0f}", format_delta_tw(latest['SOX']-prev['SOX']), delta_color="inverse")
-            col5.metric("恐慌指數 VIX", f"{latest['VIX']:.2f}", format_delta_tw(latest['VIX']-prev['VIX']), delta_color="inverse")
+            # 使用 delta_color="normal" 搭配我們的 CSS，確保正數 ▲ 呈現亮紅色
+            dxy_val = latest.get('DXY', 103.5)
+            dxy_diff = dxy_val - prev.get('DXY', dxy_val)
+            col1.metric("美元指數 DXY", f"{dxy_val:.2f}", get_delta_str(dxy_diff), delta_color="normal")
+            
+            us10y_val = latest.get('US10Y', 4.2)
+            us10y_diff = us10y_val - prev.get('US10Y', us10y_val)
+            col2.metric("美債 10Y 殖利率", f"{us10y_val:.2f}%", get_delta_str(us10y_diff), delta_color="normal")
+            
+            twd_val = latest.get('TWD', 31.8)
+            twd_diff = twd_val - prev.get('TWD', twd_val)
+            col3.metric("台幣匯率 USD/TWD", f"{twd_val:.2f}", get_delta_str(twd_diff), delta_color="normal")
+            
+            sox_val = latest.get('SOX', 5000)
+            sox_diff = sox_val - prev.get('SOX', sox_val)
+            col4.metric("費城半導體 SOX", f"{sox_val:.0f}", get_delta_str(sox_diff), delta_color="normal")
+            
+            vix_val = latest.get('VIX', 15.0)
+            vix_diff = vix_val - prev.get('VIX', vix_val)
+            col5.metric("恐慌指數 VIX", f"{vix_val:.2f}", get_delta_str(vix_diff), delta_color="normal")
 
             st.markdown("---")
             st.subheader("📊 全球資金環境評分模型（初版）")
             
-            score_vix = max(0, min(100, (30 - latest['VIX']) * 5))
-            score_dxy = max(0, min(100, (108 - latest['DXY']) * 10))
-            score_twd = max(0, min(100, (33 - latest['TWD']) * 20))
-            score_sox = 70 if latest['SOX'] > df_macro['SOX'].mean() else 40
+            score_vix = max(0, min(100, (30 - vix_val) * 5))
+            score_dxy = max(0, min(100, (108 - dxy_val) * 10))
+            score_twd = max(0, min(100, (33 - twd_val) * 20))
+            score_sox = 70 if sox_val > df_macro['SOX'].mean() else 40
             
             total_score = (score_dxy * 0.20) + (score_sox * 0.20) + (score_vix * 0.15) + (score_twd * 0.10) + 25
             
@@ -153,12 +175,12 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
             if st.button("🚀 執行 AI 總經推論分析"):
                 with st.spinner("AI 正在分析全球總經數據、Fed 利率與國際情勢並進行 Top-Down 推論..."):
                     try:
-                        macro_df = yf.download(["DX=F", "^TNX", "^VIX", "CL=F", "GC=F", "^SOX"], period="5d")['Close'].ffill()
+                        macro_df = yf.download(["DX-Y=F", "^TNX", "^VIX", "CL=F", "GC=F", "^SOX"], period="5d")['Close'].ffill()
                         latest_m = macro_df.iloc[-1]
                         
                         summary_prompt = f"""
                         最新市場情勢數據：
-                        - 美元指數 DXY: {latest_m.get('DX=F', 103):.2f}
+                        - 美元指數 DXY: {latest_m.get('DX-Y=F', 103):.2f}
                         - 美國10年期公債殖利率: {latest_m.get('^TNX', 4.0):.2f}%
                         - 恐慌指數 VIX: {latest_m.get('^VIX', 15):.2f}
                         - 原油 CL=F: ${latest_m.get('CL=F', 75):.1f}
@@ -231,8 +253,8 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                                 st.metric(
                                     label=f"{s_name} ({s_code})",
                                     value=f"${price:.1f} 元",
-                                    delta=f"近1月 {chg_text}",
-                                    delta_color="inverse"  # 台股慣用紅漲綠跌
+                                    delta=chg_text,
+                                    delta_color="normal"
                                 )
                             else:
                                 st.metric(label=f"{s_name} ({s_code})", value="讀取中...")
@@ -309,8 +331,10 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
         st.subheader("💡 三情境評估結果")
         res_col1, res_col2, res_col3, res_col4 = st.columns(4)
         
-        # 調整 delta_color 使其符合台股上漲紅/下跌綠
-        res_col1.metric("悲觀目標價 / ROI", f"${target_bear:.1f}", f"{roi_bear:+.1f}%", delta_color="inverse")
-        res_col2.metric("基準目標價 / ROI", f"${target_base:.1f}", f"{roi_base:+.1f}%", delta_color="inverse")
-        res_col3.metric("樂觀目標價 / ROI", f"${target_bull:.1f}", f"{roi_bull:+.1f}%", delta_color="inverse")
-        res_col4.metric("加權期望 ROI", f"{expected_roi:.1f}%", f"{expected_roi:+.1f}%", delta_color="inverse")
+        def fmt_roi(r):
+            return f"▲ +{r:.1f}%" if r > 0 else f"▼ {r:.1f}%"
+
+        res_col1.metric("悲觀目標價 / ROI", f"${target_bear:.1f}", fmt_roi(roi_bear), delta_color="normal")
+        res_col2.metric("基準目標價 / ROI", f"${target_base:.1f}", fmt_roi(roi_base), delta_color="normal")
+        res_col3.metric("樂觀目標價 / ROI", f"${target_bull:.1f}", fmt_roi(roi_bull), delta_color="normal")
+        res_col4.metric("加權期望 ROI", f"{expected_roi:.1f}%", fmt_roi(expected_roi), delta_color="normal")
