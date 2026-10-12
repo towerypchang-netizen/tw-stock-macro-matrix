@@ -7,27 +7,13 @@ import json
 import google.generativeai as genai
 
 # ---------------------------------------------------------
-# 1. 頁面基本配置與台股慣用顏色 CSS 注入 (紅漲綠跌)
+# 1. 頁面基本配置
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="台股預測分析系統 APP (v2)",
     page_icon="📈",
     layout="wide"
 )
-
-# 強制將 Streamlit Metric 的顏色依據符號重導向 (正數▲強制為紅色、負數▼強制為綠色)
-st.markdown("""
-<style>
-/* 上漲 / 增加 (紅色) */
-div[data-testid="stMetricDelta"] > div:nth-child(1) {
-    color: #FF2B2B !important;
-}
-/* 讓帶有 ▲ 符號的 delta 顯示紅色 */
-[data-testid="stMetricDelta"]:has(div:contains("▲")) {
-    color: #FF2B2B !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 st.title("📈 台股八階段預測與總經分析系統 APP")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
@@ -61,8 +47,25 @@ st.sidebar.caption(
     "5. 基本面與估值 ➔ 6. 技術籌碼 ➔ 7. 事件與風控 ➔ 8. 追蹤驗證與修正"
 )
 
+# 自訂台股習慣 HTML 卡片元件 (紅漲綠跌)
+def render_tw_card(title, value_str, diff_val):
+    if pd.isna(diff_val) or diff_val == 0:
+        delta_html = '<span style="color: #888888; font-size: 14px;">0.00</span>'
+    elif diff_val > 0:
+        delta_html = f'<span style="color: #FF3333; font-weight: bold; font-size: 14px;">▲ +{diff_val:.2f}</span>'
+    else:
+        delta_html = f'<span style="color: #00CC66; font-weight: bold; font-size: 14px;">▼ {diff_val:.2f}</span>'
+        
+    st.markdown(f"""
+        <div style="background-color: #1E1E1E; padding: 15px; border-radius: 8px; border: 1px solid #333;">
+            <div style="color: #AAAAAA; font-size: 13px; margin-bottom: 5px;">{title}</div>
+            <div style="color: #FFFFFF; font-size: 24px; font-weight: bold; margin-bottom: 5px;">{value_str}</div>
+            <div>{delta_html}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經儀表板 (已修正 DXY NaN 與紅綠顏色)
+# 工具 1：全球資金與總經儀表板
 # ---------------------------------------------------------
 if selected_tool == "核心工具 1：全球資金與總經儀表板":
     st.header("🌐 核心工具 1：全球資金與總經儀表板")
@@ -73,7 +76,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         tickers = {
             'SOX': '^SOX',         # 費城半導體
             'S&P500': '^GSPC',     # S&P 500
-            'DXY': 'DX-Y=F',       # 美元指數 (更新為更穩定之 DX-Y=F)
+            'DXY': 'DX-Y=F',       # 美元指數
             'US10Y': '^TNX',       # 10年期公債殖利率
             'US2Y': '^IRX',        # 2年期公債殖利率
             'VIX': '^VIX',         # 恐慌指數
@@ -88,14 +91,17 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         for name, symbol in tickers.items():
             if symbol in raw_data.columns:
                 df[name] = raw_data[symbol]
-            else:
-                # 備援抓取
-                try:
-                    df[name] = yf.Ticker(symbol).history(period="3mo")['Close']
-                except Exception:
-                    pass
         
+        # 針對可能出現 NaN 的項目做強制填充
         df = df.ffill().bfill()
+        
+        # 若 DXY 仍有 NaN，直接補備援數據
+        if 'DXY' not in df.columns or df['DXY'].isna().all():
+            try:
+                df['DXY'] = yf.Ticker("DX-Y=F").history(period="3mo")['Close'].ffill()
+            except Exception:
+                df['DXY'] = 103.5
+                
         return df
 
     with st.spinner("連線 Yahoo Finance 抓取真實市場數據中..."):
@@ -104,34 +110,32 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
             latest = df_macro.iloc[-1]
             prev = df_macro.iloc[-2]
             
-            # 格式化 delta 文字 (紅漲綠跌邏輯)
-            def get_delta_str(val):
-                if pd.isna(val) or val == 0:
-                    return "0.00"
-                return f"▲ +{val:.2f}" if val > 0 else f"▼ {val:.2f}"
-
             col1, col2, col3, col4, col5 = st.columns(5)
             
-            # 使用 delta_color="normal" 搭配我們的 CSS，確保正數 ▲ 呈現亮紅色
             dxy_val = latest.get('DXY', 103.5)
             dxy_diff = dxy_val - prev.get('DXY', dxy_val)
-            col1.metric("美元指數 DXY", f"{dxy_val:.2f}", get_delta_str(dxy_diff), delta_color="normal")
+            with col1:
+                render_tw_card("美元指數 DXY", f"{dxy_val:.2f}", dxy_diff)
             
             us10y_val = latest.get('US10Y', 4.2)
             us10y_diff = us10y_val - prev.get('US10Y', us10y_val)
-            col2.metric("美債 10Y 殖利率", f"{us10y_val:.2f}%", get_delta_str(us10y_diff), delta_color="normal")
+            with col2:
+                render_tw_card("美債 10Y 殖利率", f"{us10y_val:.2f}%", us10y_diff)
             
             twd_val = latest.get('TWD', 31.8)
             twd_diff = twd_val - prev.get('TWD', twd_val)
-            col3.metric("台幣匯率 USD/TWD", f"{twd_val:.2f}", get_delta_str(twd_diff), delta_color="normal")
+            with col3:
+                render_tw_card("台幣匯率 USD/TWD", f"{twd_val:.2f}", twd_diff)
             
             sox_val = latest.get('SOX', 5000)
             sox_diff = sox_val - prev.get('SOX', sox_val)
-            col4.metric("費城半導體 SOX", f"{sox_val:.0f}", get_delta_str(sox_diff), delta_color="normal")
+            with col4:
+                render_tw_card("費城半導體 SOX", f"{sox_val:.0f}", sox_diff)
             
             vix_val = latest.get('VIX', 15.0)
             vix_diff = vix_val - prev.get('VIX', vix_val)
-            col5.metric("恐慌指數 VIX", f"{vix_val:.2f}", get_delta_str(vix_diff), delta_color="normal")
+            with col5:
+                render_tw_card("恐慌指數 VIX", f"{vix_val:.2f}", vix_diff)
 
             st.markdown("---")
             st.subheader("📊 全球資金環境評分模型（初版）")
@@ -236,7 +240,7 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                     for idx, s_item in enumerate(stocks):
                         s_name, s_code = s_item[0], s_item[1]
                         with cols[idx]:
-                            price, chg_pct = None, None
+                            price, chg_pct = None, 0.0
                             for suffix in [".TW", ".TWO"]:
                                 try:
                                     t = yf.Ticker(f"{s_code}{suffix}")
@@ -249,15 +253,9 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
                                     pass
                             
                             if price:
-                                chg_text = f"▲ +{chg_pct:.1f}%" if chg_pct > 0 else f"▼ {chg_pct:.1f}%"
-                                st.metric(
-                                    label=f"{s_name} ({s_code})",
-                                    value=f"${price:.1f} 元",
-                                    delta=chg_text,
-                                    delta_color="normal"
-                                )
+                                render_tw_card(f"{s_name} ({s_code})", f"${price:.1f} 元", chg_pct)
                             else:
-                                st.metric(label=f"{s_name} ({s_code})", value="讀取中...")
+                                st.write(f"讀取中 ({s_code})...")
 
 # ---------------------------------------------------------
 # 工具 3：個股基本面與 ROI 評分表
@@ -331,10 +329,11 @@ elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
         st.subheader("💡 三情境評估結果")
         res_col1, res_col2, res_col3, res_col4 = st.columns(4)
         
-        def fmt_roi(r):
-            return f"▲ +{r:.1f}%" if r > 0 else f"▼ {r:.1f}%"
-
-        res_col1.metric("悲觀目標價 / ROI", f"${target_bear:.1f}", fmt_roi(roi_bear), delta_color="normal")
-        res_col2.metric("基準目標價 / ROI", f"${target_base:.1f}", fmt_roi(roi_base), delta_color="normal")
-        res_col3.metric("樂觀目標價 / ROI", f"${target_bull:.1f}", fmt_roi(roi_bull), delta_color="normal")
-        res_col4.metric("加權期望 ROI", f"{expected_roi:.1f}%", fmt_roi(expected_roi), delta_color="normal")
+        with res_col1:
+            render_tw_card("悲觀目標價 / ROI", f"${target_bear:.1f}", roi_bear)
+        with res_col2:
+            render_tw_card("基準目標價 / ROI", f"${target_base:.1f}", roi_base)
+        with res_col3:
+            render_tw_card("樂觀目標價 / ROI", f"${target_bull:.1f}", roi_bull)
+        with res_col4:
+            render_tw_card("加權期望 ROI", f"{expected_roi:.1f}%", expected_roi)
