@@ -80,10 +80,10 @@ def load_stable_macro_data():
         except Exception:
             pass
 
-    # 備援機制：如果 DXY 仍缺失，強制抓取代碼或計算
+    # 備援機制：如果 DXY 仍缺失，強制抓取代碼或估算
     if 'DXY' not in df.columns or df['DXY'].isna().all():
         try:
-            df['DXY'] = yf.Ticker("UUP").history(period="3mo")['Close'] * 3.6  # 代理 ETF 換算
+            df['DXY'] = yf.Ticker("UUP").history(period="3mo")['Close'] * 3.6
         except Exception:
             df['DXY'] = 103.5
 
@@ -192,13 +192,12 @@ def render_tw_card(title, value_str, diff_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經儀表板 (已新增原油/黃金卡片，縮放比例圖表)
+# 工具 1：全球資金與總經儀表板 (修復 Plotly 語法)
 # ---------------------------------------------------------
 if selected_tool == "核心工具 1：全球資金與總經儀表板":
     st.header("🌐 核心工具 1：全球資金與總經儀表板")
     st.write("每日追蹤主要市場、美元、殖利率、VIX、台幣、原油與黃金，計算全球資金環境評分。")
 
-    # 完整 7 大關鍵指標卡片
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     with c1:
         render_tw_card("美元指數 DXY", f"{dxy_val:.2f}", dxy_val - prev_top.get('DXY', dxy_val))
@@ -244,7 +243,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
     # 計算累積百分比變化 % (Cumulative Percentage Change)
     df_pct = ((df_chart / df_chart.iloc[0]) - 1) * 100
 
-    # 繪製 Plotly 高放大係數圖表
+    # 繪製 Plotly 高放大係數圖表 (更正相容語法)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['TAIEX'], mode='lines', name='台股加權指數', line=dict(color='#FF3333', width=3)))
     fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['SOX'], mode='lines', name='費半 SOX', line=dict(color='#00CC66', width=2)))
@@ -257,7 +256,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         template="plotly_dark",
         height=450,
         margin=dict(l=20, r=20, t=30, b=20),
-        yaxis=dict(title="累積漲跌幅 (%)", autocorrange=True, zeroline=True, zerolinecolor="#555"),
+        yaxis=dict(title="累積漲跌幅 (%)", zeroline=True, zerolinecolor="#555"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
