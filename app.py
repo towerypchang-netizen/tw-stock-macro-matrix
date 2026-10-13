@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 # 1. 頁面基本配置與頂端置頂凍結列 CSS 注入
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="台股預測分析系統 APP (v2)",
+    page_title="台股八階段預測與總經分析系統 APP",
     page_icon="📈",
     layout="wide"
 )
@@ -31,7 +31,7 @@ st.markdown("""
 
 .sticky-card {
     background-color: #1A1A1A;
-    padding: 6px 10px;
+    padding: 8px 10px;
     border-radius: 6px;
     border: 1px solid #2C2C2C;
     text-align: center;
@@ -55,7 +55,7 @@ st.title("📈 台股八階段預測與總經分析系統 APP")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
 
 # ---------------------------------------------------------
-# 2. 全域數據穩定抓取邏輯 (確保跨國日期完全對齊與無 NaN)
+# 2. 全域數據穩定抓取邏輯 (全指標覆蓋 + DXY 多重備援)
 # ---------------------------------------------------------
 @st.cache_data(ttl=1800)
 def load_stable_macro_data():
@@ -70,10 +70,10 @@ def load_stable_macro_data():
         'TWD': 'TWD=X'         # 美元/台幣
     }
     
-    # 批次下載歷史價格
+    # 下載數據
     raw = yf.download(list(tickers.values()), period="3mo", interval="1d")['Close']
     
-    # 去除時區影響以正確對齊台美開盤日
+    # 消除時區標籤以對齊台美開盤日
     if isinstance(raw.index, pd.DatetimeIndex):
         raw.index = raw.index.tz_localize(None)
         
@@ -82,17 +82,23 @@ def load_stable_macro_data():
         if sym in raw.columns:
             df[name] = raw[sym]
             
-    # 如果 DXY 仍有空值，單獨補抓
+    # 美元指數 DXY 多重備援防護，徹底排除 nan
     if 'DXY' not in df.columns or df['DXY'].isna().all():
-        try:
-            dxy_h = yf.Ticker("DX-Y=F").history(period="3mo")['Close']
-            if isinstance(dxy_h.index, pd.DatetimeIndex):
-                dxy_h.index = dxy_h.index.tz_localize(None)
-            df['DXY'] = dxy_h
-        except Exception:
-            df['DXY'] = 103.5
+        for fallback_sym in ["DX-Y=F", "DX=F", "UUP"]:
+            try:
+                dxy_h = yf.Ticker(fallback_sym).history(period="3mo")['Close']
+                if not dxy_h.empty:
+                    if isinstance(dxy_h.index, pd.DatetimeIndex):
+                        dxy_h.index = dxy_h.index.tz_localize(None)
+                    df['DXY'] = dxy_h * (3.6 if fallback_sym == "UUP" else 1.0)
+                    break
+            except Exception:
+                pass
+                
+    if 'DXY' not in df.columns or df['DXY'].isna().all():
+        df['DXY'] = 103.5
 
-    # 強制執行連續前向與後向填充，徹底消滅 NaN
+    # 補全缺失值
     df = df.ffill().bfill()
     return df
 
@@ -113,7 +119,7 @@ def get_top_delta_html(val):
     else:
         return f'<span style="color: #00CC66; font-weight: bold; font-size: 11px;">▼ {val:.2f}</span>'
 
-# 頂端凍結列 (Sticky Header)
+# 全局頂端固定凍結儀表板 (Sticky Header)
 st.markdown('<div class="sticky-top-bar">', unsafe_allow_html=True)
 tc1, tc2, tc3, tc4, tc5, tc6, tc7, tc8 = st.columns(8)
 
@@ -152,7 +158,7 @@ with tc8:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 3. 側邊欄（Sidebar）API Key 讀取邏輯
+# 3. 側邊欄（Sidebar）與工具導航
 # ---------------------------------------------------------
 st.sidebar.header("⚙️ 系統導覽與 API 設定")
 
@@ -167,7 +173,7 @@ else:
 selected_tool = st.sidebar.radio(
     "核心分析工具區",
     [
-        "核心工具 1：全球資金與總經儀表板",
+        "核心工具 1：全球資金與總經環境評分",
         "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)",
         "核心工具 3：個股基本面與 ROI 評分表"
     ]
@@ -180,7 +186,7 @@ st.sidebar.caption(
     "5. 基本面與估值 ➔ 6. 技術籌碼 ➔ 7. 事件與風控 ➔ 8. 追蹤驗證與修正"
 )
 
-# 自訂台股習慣 HTML 卡片元件 (紅漲綠跌)
+# 自訂卡片元件
 def render_tw_card(title, value_str, diff_val):
     if pd.isna(diff_val) or diff_val == 0:
         delta_html = '<span style="color: #888888; font-size: 14px;">0.00</span>'
@@ -198,30 +204,13 @@ def render_tw_card(title, value_str, diff_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經儀表板 (已修正多曲線繪製)
+# 工具 1：全球資金與總經環境評分 (整合全指標趨勢圖)
 # ---------------------------------------------------------
-if selected_tool == "核心工具 1：全球資金與總經儀表板":
-    st.header("🌐 核心工具 1：全球資金與總經儀表板")
-    st.write("每日追蹤主要市場、美元、殖利率、VIX、台幣、原油與黃金，計算全球資金環境評分。")
+if selected_tool == "核心工具 1：全球資金與總經環境評分":
+    st.header("🌐 核心工具 1：全球資金與總經環境評分")
+    st.write("即時總經數據已置頂於頂端列。本區提供「全球資金環境綜合評分」與「全指標 vs 台股加權 聯動對比圖」。")
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    with c1:
-        render_tw_card("美元指數 DXY", f"{dxy_val:.2f}", dxy_val - prev_top.get('DXY', dxy_val))
-    with c2:
-        render_tw_card("美債 10Y 殖利率", f"{us10y_val:.2f}%", us10y_val - prev_top.get('US10Y', us10y_val))
-    with c3:
-        render_tw_card("台幣匯率 TWD", f"{twd_val:.2f}", twd_val - prev_top.get('TWD', twd_val))
-    with c4:
-        render_tw_card("費城半導體 SOX", f"{sox_val:.0f}", sox_val - prev_top.get('SOX', sox_val))
-    with c5:
-        render_tw_card("恐慌指數 VIX", f"{vix_val:.2f}", vix_val - prev_top.get('VIX', vix_val))
-    with c6:
-        render_tw_card("WTI 原油", f"${wti_val:.1f}", wti_val - prev_top.get('WTI', wti_val))
-    with c7:
-        render_tw_card("黃金現貨 Gold", f"${gold_val:.0f}", gold_val - prev_top.get('Gold', gold_val))
-
-    st.markdown("---")
-    st.subheader("📊 全球資金環境評分模型（初版）")
+    st.subheader("📊 全球資金環境評分模型")
     
     score_vix = max(0, min(100, (30 - vix_val) * 5))
     score_dxy = max(0, min(100, (108 - dxy_val) * 10))
@@ -239,31 +228,45 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         st.error("🟢 目前資金環境偏向「風險規避 (Risk-Off)」，建議提高防禦持股與現金比重。")
 
     st.markdown("---")
-    st.subheader("📈 全球資金總經 vs 台股加權指數 累積漲跌幅 (%) 聯動趨勢圖")
-    st.caption("將各指標基期對齊並轉換為「累積變動百分比 (%)」，確保所有國際曲線同步顯現。")
+    st.subheader("📈 全球資金總經 (所有 8 大指標) vs 台股加權指數 聯動趨勢圖")
+    st.caption("將頂端列所有 8 大指標基期齊平轉為「累積變動百分比 (%)」，全面觀察國際資金流向對台股的領先/落後反映。")
 
     chart_days = st.slider("選擇圖表觀察天數 (天)：", min_value=14, max_value=90, value=30)
     
-    # 擷取指定天數數據並確保完全對齊
-    df_sub = df_top.tail(chart_days).dropna(how='all').copy()
-    df_sub = df_sub.ffill().bfill()
-    
-    # 計算以選定天數第一天為基期的累積漲跌幅 (%)
+    # 勾選想要顯示在圖表上的指標
+    st.markdown("**選擇要在折線圖中對比的指標：**")
+    chk_cols = st.columns(4)
+    with chk_cols[0]:
+        show_taiex = st.checkbox("台股加權指數", value=True)
+        show_sox = st.checkbox("費城半導體 SOX", value=True)
+    with chk_cols[1]:
+        show_dxy = st.checkbox("美元指數 DXY", value=True)
+        show_us10y = st.checkbox("美債 10Y 殖利率", value=True)
+    with chk_cols[2]:
+        show_vix = st.checkbox("恐慌指數 VIX", value=True)
+        show_twd = st.checkbox("美元/台幣 TWD", value=True)
+    with chk_cols[3]:
+        show_wti = st.checkbox("WTI 原油", value=True)
+        show_gold = st.checkbox("黃金現貨 Gold", value=True)
+
+    df_sub = df_top.tail(chart_days).dropna(how='all').copy().ffill().bfill()
     base_row = df_sub.iloc[0]
-    df_pct = pd.DataFrame(index=df_sub.index)
-    
+
+    # 全 8 大指標映射表
     cols_map = {
-        'TAIEX': ('台股加權指數', '#FF3333', 3, 'solid'),
-        'SOX': ('費半 SOX', '#00CC66', 2, 'solid'),
-        'DXY': ('美元指數 DXY', '#00BFFF', 2, 'dot'),
-        'US10Y': ('美債 10Y 殖利率', '#FFA500', 2, 'dash'),
-        'WTI': ('WTI 原油', '#8A2BE2', 1.5, 'solid'),
-        'Gold': ('黃金現貨', '#FFD700', 1.5, 'solid')
+        'TAIEX': ('台股加權指數', '#FF3333', 3, 'solid', show_taiex),
+        'SOX': ('費半 SOX', '#00CC66', 2, 'solid', show_sox),
+        'DXY': ('美元指數 DXY', '#00BFFF', 2, 'dot', show_dxy),
+        'US10Y': ('美債 10Y 殖利率', '#FFA500', 2, 'dash', show_us10y),
+        'VIX': ('恐慌指數 VIX', '#FF00FF', 1.5, 'dashdot', show_vix),
+        'TWD': ('美元/台幣 TWD', '#32CD32', 2, 'dot', show_twd),
+        'WTI': ('WTI 原油', '#8A2BE2', 1.5, 'solid', show_wti),
+        'Gold': ('黃金現貨 Gold', '#FFD700', 1.5, 'solid', show_gold)
     }
 
     fig = go.Figure()
-    for col_key, (disp_name, color_hex, width_px, dash_style) in cols_map.items():
-        if col_key in df_sub.columns and base_row[col_key] > 0:
+    for col_key, (disp_name, color_hex, width_px, dash_style, is_selected) in cols_map.items():
+        if is_selected and col_key in df_sub.columns and base_row[col_key] > 0:
             pct_series = ((df_sub[col_key] - base_row[col_key]) / base_row[col_key]) * 100
             fig.add_trace(go.Scatter(
                 x=pct_series.index,
@@ -276,7 +279,7 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
 
     fig.update_layout(
         template="plotly_dark",
-        height=480,
+        height=500,
         margin=dict(l=20, r=20, t=30, b=20),
         yaxis=dict(title="累積漲跌幅 (%)", zeroline=True, zerolinecolor="#555555"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
