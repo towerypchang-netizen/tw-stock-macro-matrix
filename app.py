@@ -181,11 +181,10 @@ btn_tool3 = st.sidebar.button(
     type="primary" if st.session_state['selected_tool'] == "個股基本面與 ROI 評分表" else "secondary"
 )
 
-# 當選取個股基本面時，直接在按鈕下方顯示代號輸入框
-stock_code_input = "6187"
+stock_code_input = "3450"
 if st.session_state['selected_tool'] == "個股基本面與 ROI 評分表":
     st.sidebar.markdown("---")
-    stock_code_input = st.sidebar.text_input("🔍 輸入台股代號（例：6187 或 2330）：", value="6187")
+    stock_code_input = st.sidebar.text_input("🔍 輸入台股代號（例：3450 或 2330）：", value="3450")
 
 if btn_tool1:
     st.session_state['selected_tool'] = "全球資金與總經環境評分"
@@ -203,9 +202,9 @@ def render_tw_card(title, value_str, diff_val):
     if pd.isna(diff_val) or diff_val == 0:
         delta_html = '<span style="color: #888888; font-size: 14px;">0.00</span>'
     elif diff_val > 0:
-        delta_html = f'<span style="color: #FF3333; font-weight: bold; font-size: 14px;">▲ +{diff_val:.2f}</span>'
+        delta_html = f'<span style="color: #FF3333; font-weight: bold; font-size: 14px;">▲ +{diff_val:.2f}%</span>'
     else:
-        delta_html = f'<span style="color: #00CC66; font-weight: bold; font-size: 14px;">▼ {diff_val:.2f}</span>'
+        delta_html = f'<span style="color: #00CC66; font-weight: bold; font-size: 14px;">▼ {diff_val:.2f}%</span>'
         
     st.markdown(f"""
         <div style="background-color: #1E1E1E; padding: 12px; border-radius: 8px; border: 1px solid #333;">
@@ -431,17 +430,18 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
             st.markdown("<hr style='border:1px dashed #333;'>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 3：個股基本面與 ROI 評分表 (接收左側輸入之個股代號)
+# 工具 3：個股基本面與 ROI 評分表 (全新視覺化與風險回報估算)
 # ---------------------------------------------------------
 elif selected_tool == "個股基本面與 ROI 評分表":
     st.header("📊 個股基本面與 ROI 評分表")
-    st.write("每月更新財務、EPS、估值區間、籌碼與三情境 ROI 分析。")
+    st.write("連線真實行情與財報，動態調控三情境（悲觀/基準/樂觀）估值參數，視覺化評估安全邊際與風險報酬比。")
     
     stock_code = stock_code_input.strip()
     
     if stock_code:
         fetched_price = None
         trailing_eps = None
+        stock_name = stock_code
         
         with st.spinner(f"連線 Yahoo Finance 擷取 {stock_code} 最新真實財務數據中..."):
             for suffix in [".TWO", ".TW"]:
@@ -452,41 +452,46 @@ elif selected_tool == "個股基本面與 ROI 評分表":
                     if not hist.empty:
                         fetched_price = float(hist['Close'].iloc[-1])
                         trailing_eps = info.get('trailingEps', None)
+                        stock_name = info.get('shortName', stock_code)
                         break
                 except Exception:
                     pass
         
         if fetched_price:
-            st.success(f"✅ 連線成功！個股 ({stock_code}) 最新真實收盤價： **${fetched_price:.2f} 元**")
+            st.success(f"✅ 連線成功！個股：**{stock_name} ({stock_code})** | 最新真實收盤價： **${fetched_price:.2f} 元**")
             current_price = fetched_price
         else:
-            st.warning(f"⚠️ 未能自動取得代號 {stock_code} 之股價，請手動確認。")
-            current_price = 1000.0
+            st.warning(f"⚠️ 未能自動取得代號 {stock_code} 之股價，預設帶入估算數值。")
+            current_price = 474.0
 
-        base_eps_val = float(trailing_eps) if trailing_eps and trailing_eps > 0 else round(current_price / 25.0, 2)
-        base_pe_val = round(current_price / base_eps_val, 1) if base_eps_val > 0 else 25.0
+        base_eps_val = float(trailing_eps) if trailing_eps and trailing_eps > 0 else round(current_price / 30.0, 2)
+        base_pe_val = round(current_price / base_eps_val, 1) if base_eps_val > 0 else 30.0
         
-        st.subheader(f"🔍 個股基本面與三情境 ROI 試算表（代號：{stock_code}）")
+        st.subheader(f"⚙️ 情境敏感度動態調整（代號：{stock_code}）")
         
         col_bear, col_base, col_bull = st.columns(3)
         with col_bear:
-            st.markdown("##### 🟢 悲觀情境 (Prob: 20%)")
-            eps_bear = st.number_input("悲觀 12M EPS", value=round(base_eps_val * 0.85, 2))
-            pe_bear = st.number_input("悲觀 PE 倍數", value=max(10.0, round(base_pe_val * 0.85, 1)))
+            st.markdown("##### 🟢 悲觀情境 (概率 20%)")
+            eps_bear = st.slider("悲觀 12M EPS (元)", min_value=0.5, max_value=float(round(base_eps_val*3, 1)), value=float(round(base_eps_val * 0.85, 2)), step=0.1)
+            pe_bear = st.slider("悲觀 PE 倍數", min_value=5.0, max_value=200.0, value=float(max(10.0, round(base_pe_val * 0.85, 1))), step=1.0)
         
         with col_base:
-            st.markdown("##### 🟡 基準情境 (Prob: 60%)")
-            eps_base = st.number_input("基準 12M EPS", value=round(base_eps_val, 2))
-            pe_base = st.number_input("基準 PE 倍數", value=round(base_pe_val, 1))
+            st.markdown("##### 🟡 基準情境 (概率 60%)")
+            eps_base = st.slider("基準 12M EPS (元)", min_value=0.5, max_value=float(round(base_eps_val*3, 1)), value=float(round(base_eps_val, 2)), step=0.1)
+            pe_base = st.slider("基準 PE 倍數", min_value=5.0, max_value=200.0, value=float(round(base_pe_val, 1)), step=1.0)
             
         with col_bull:
-            st.markdown("##### 🔴 樂觀情境 (Prob: 20%)")
-            eps_bull = st.number_input("樂觀 12M EPS", value=round(base_eps_val * 1.20, 2))
-            pe_bull = st.number_input("樂觀 PE 倍數", value=round(base_pe_val * 1.15, 1))
+            st.markdown("##### 🔴 樂觀情境 (概率 20%)")
+            eps_bull = st.slider("樂觀 12M EPS (元)", min_value=0.5, max_value=float(round(base_eps_val*3, 1)), value=float(round(base_eps_val * 1.20, 2)), step=0.1)
+            pe_bull = st.slider("樂觀 PE 倍數", min_value=5.0, max_value=200.0, value=float(round(base_pe_val * 1.15, 1)), step=1.0)
 
-        real_price_input = st.number_input("個股當前股價 (元) [自動同步最新價]", value=current_price)
-        cash_div = st.number_input("預估未來一年現金股利 (元)", value=round(base_eps_val * 0.6, 1))
+        c_p1, c_p2 = st.columns(2)
+        with c_p1:
+            real_price_input = st.number_input("個股當前基準股價 (元)", value=current_price)
+        with c_p2:
+            cash_div = st.number_input("預估未來一年現金股利 (元)", value=round(base_eps_val * 0.5, 1))
         
+        # 目標價與 ROI 試算
         target_bear = eps_bear * pe_bear
         roi_bear = ((target_bear + cash_div - real_price_input) / real_price_input) * 100
         
@@ -496,12 +501,19 @@ elif selected_tool == "個股基本面與 ROI 評分表":
         target_bull = eps_bull * pe_bull
         roi_bull = ((target_bull + cash_div - real_price_input) / real_price_input) * 100
         
+        expected_target = (target_bear * 0.2) + (target_base * 0.6) + (target_bull * 0.2)
         expected_roi = (roi_bear * 0.2) + (roi_base * 0.6) + (roi_bull * 0.2)
         
+        # 安全邊際與風險回報比
+        margin_safety = ((expected_target - real_price_input) / expected_target) * 100
+        downside_risk = abs(min(0, roi_bear))
+        upside_reward = max(0, roi_bull)
+        rr_ratio = (upside_reward / downside_risk) if downside_risk > 0 else 99.0
+
         st.markdown("---")
-        st.subheader("💡 三情境評估結果")
-        res_col1, res_col2, res_col3, res_col4 = st.columns(4)
+        st.subheader("💡 三情境評估與加權期望值")
         
+        res_col1, res_col2, res_col3, res_col4 = st.columns(4)
         with res_col1:
             render_tw_card("悲觀目標價 / ROI", f"${target_bear:.1f}", roi_bear)
         with res_col2:
@@ -509,4 +521,68 @@ elif selected_tool == "個股基本面與 ROI 評分表":
         with res_col3:
             render_tw_card("樂觀目標價 / ROI", f"${target_bull:.1f}", roi_bull)
         with res_col4:
-            render_tw_card("加權期望 ROI", f"{expected_roi:.1f}%", expected_roi)
+            render_tw_card("加權期望目標價 / ROI", f"${expected_target:.1f}", expected_roi)
+
+        st.markdown("---")
+        st.subheader("📊 1. 三情境估值矩陣與風險對比表")
+        
+        df_summary = pd.DataFrame({
+            "情境 (概率)": ["🟢 悲觀情境 (20%)", "🟡 基準情境 (60%)", "🔴 樂觀情境 (20%)", "🎯 加權期望值 (100%)"],
+            "預估 12M EPS": [f"${eps_bear:.2f}", f"${eps_base:.2f}", f"${eps_bull:.2f}", f"${((eps_bear*0.2)+(eps_base*0.6)+(eps_bull*0.2)):.2f}"],
+            "隱含 PE 倍數": [f"{pe_bear:.1f}x", f"{pe_base:.1f}x", f"{pe_bull:.1f}x", f"{((pe_bear*0.2)+(pe_base*0.6)+(pe_bull*0.2)):.1f}x"],
+            "隱含目標價": [f"${target_bear:.1f}", f"${target_base:.1f}", f"${target_bull:.1f}", f"${expected_target:.1f}"],
+            "預期總報酬 ROI (%)": [f"{roi_bear:+.1f}%", f"{roi_base:+.1f}%", f"{roi_bull:+.1f}%", f"{expected_roi:+.1f}%"]
+        })
+        st.table(df_summary)
+
+        st.markdown("---")
+        st.subheader("🎯 2. 當前股價落點與安全邊際軌道圖")
+        st.caption("觀察當前股價在『悲觀地板價』與『樂觀天花板價』之間的相對位置。")
+
+        fig_gauge = go.Figure()
+        
+        # 繪製橫向區間軌道
+        fig_gauge.add_trace(go.Scatter(
+            x=[target_bear, target_base, target_bull],
+            y=["目標價區間", "目標價區間", "目標價區間"],
+            mode='lines+markers',
+            name='目標價軌道',
+            marker=dict(size=14, color=['#00CC66', '#FFA500', '#FF3333']),
+            line=dict(color='#555555', width=4)
+        ))
+        
+        # 標示當前股價位置
+        fig_gauge.add_trace(go.Scatter(
+            x=[real_price_input],
+            y=["目標價區間"],
+            mode='markers+text',
+            name='當前股價',
+            text=[f"目前股價: ${real_price_input:.1f}"],
+            textposition="top center",
+            marker=dict(size=20, color='#00BFFF', symbol='diamond')
+        ))
+
+        fig_gauge.update_layout(
+            template="plotly_dark",
+            height=220,
+            margin=dict(l=20, r=20, t=40, b=20),
+            xaxis=dict(title="價格 (元)", zeroline=False),
+            showlegend=True,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_gauge, use_container_width=True)
+
+        # 決策輔助評分
+        st.markdown("##### 📌 投資決策風控指標彙整")
+        mc1, mc2, mc3 = st.columns(3)
+        with mc1:
+            st.metric("加權安全邊際率 (Margin of Safety)", f"{margin_safety:.1f}%")
+        with mc2:
+            st.metric("潛在勝賠比 (Reward / Risk Ratio)", f"{rr_ratio:.2f} 倍")
+        with mc3:
+            if expected_roi >= 20 and margin_safety > 10:
+                st.success("🟢 綜合評價：具高度安全邊際與足夠潛在獲利空間")
+            elif expected_roi >= 0:
+                st.warning("🟡 綜合評價：當前股價接近合理估值，建議逢低分批佈局")
+            else:
+                st.error("🔴 綜合評價：當前股價已高於加權目標價，估值偏高")
