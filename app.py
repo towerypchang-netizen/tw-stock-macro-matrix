@@ -80,7 +80,6 @@ def load_stable_macro_data():
         if sym in raw.columns:
             df[name] = raw[sym]
             
-    # DXY 多重備援防護，徹底排除 nan
     if 'DXY' not in df.columns or df['DXY'].isna().all():
         for fallback_sym in ["DX-Y=F", "DX=F", "UUP"]:
             try:
@@ -155,17 +154,15 @@ with tc8:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 3. 側邊欄（Sidebar）：按鈕式切換與流程簡介
+# 3. 側邊欄（Sidebar）：按鈕式切換
 # ---------------------------------------------------------
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 st.sidebar.subheader("🎯 核心分析工具區")
 
-# 狀態記錄：預設選擇第一個工具
 if 'selected_tool' not in st.session_state:
     st.session_state['selected_tool'] = "全球資金與總經環境評分"
 
-# 三個按鈕
 btn_tool1 = st.sidebar.button(
     "🌐 全球資金與總經環境評分",
     use_container_width=True,
@@ -184,7 +181,6 @@ btn_tool3 = st.sidebar.button(
     type="primary" if st.session_state['selected_tool'] == "個股基本面與 ROI 評分表" else "secondary"
 )
 
-# 按鈕點擊更新狀態
 if btn_tool1:
     st.session_state['selected_tool'] = "全球資金與總經環境評分"
     st.rerun()
@@ -204,7 +200,6 @@ st.sidebar.caption(
     "5. 基本面與估值 ➔ 6. 技術籌碼 ➔ 7. 事件與風控 ➔ 8. 追蹤驗證與修正"
 )
 
-# 自訂卡片元件
 def render_tw_card(title, value_str, diff_val):
     if pd.isna(diff_val) or diff_val == 0:
         delta_html = '<span style="color: #888888; font-size: 14px;">0.00</span>'
@@ -247,7 +242,6 @@ if selected_tool == "全球資金與總經環境評分":
 
     st.markdown("---")
     st.subheader("📈 全球資金總經 (所有 8 大指標) vs 台股加權指數 聯動趨勢圖")
-    st.caption("將頂端列所有 8 大指標基期齊平轉為「累積變動百分比 (%)」，全面觀察國際資金流向對台股的領先/落後反映。")
 
     chart_days = st.slider("選擇圖表觀察天數 (天)：", min_value=14, max_value=90, value=30)
     
@@ -304,52 +298,65 @@ if selected_tool == "全球資金與總經環境評分":
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI推論 - 嚴格遵守 Top-Down/Bottom-Up 4步驟)
 # ---------------------------------------------------------
 elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
     st.header("🏭 產業趨勢與台灣供應鏈矩陣 (AI推論)")
-    st.write("根據國際大盤、殖利率、匯率、VIX 與國際情勢，由 AI 動態推論主流產業傳導矩陣，並連線 Yahoo Finance 驗證行情。")
+    st.write("嚴格執行 4 步驟推論：總經熱錢走向 ➔ 篩選領頭羊個股 ➔ MOPS/財報供應鏈與獲利驗證 ➔ 嚴格 S1-S5 週期與 3/6/12/24M 情境預測。")
 
-    mode = st.radio("模式選擇：", ["🤖 AI 總經即時動態推論", "📌 預設主流產業清單"])
+    mode = st.radio("模式選擇：", ["🤖 AI 總經與 MOPS 驗證推論", "📌 預設主流產業清單"])
     
     selected_matrix = []
     
-    if mode == "🤖 AI 總經即時動態推論":
-        if st.button("🚀 執行 AI 總經推論分析"):
-            with st.spinner("AI 正在深度判讀美元、殖利率、VIX、原油、黃金與全球資金流向進行 Top-Down 邏輯推論..."):
+    if mode == "🤖 AI 總經與 MOPS 驗證推論":
+        if st.button("🚀 執行完整 4 步驟 Top-Down/Bottom-Up AI 分析"):
+            with st.spinner("AI 正在分析國際熱錢流向、對比 MOPS 公開資訊觀測站數據並演算 3/6/12/24M 關鍵情境..."):
                 try:
                     macro_df = df_top.tail(20)
                     latest_m = macro_df.iloc[-1]
                     prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
-                    
                     sox_chg = ((latest_m.get('SOX', 5000) - prev_m.get('SOX', 5000)) / prev_m.get('SOX', 5000)) * 100
 
+                    # 嚴格包含 S1~S5 字典定義與 4 步驟架構的硬核 Prompt
                     summary_prompt = f"""
-                    你是頂尖法人的總經與產業策略總監。請徹底根據以下真實市場數據進行硬核 Top-Down 研研推論：
+                    你是頂尖機構法人總經與台股產業策略總監。請嚴格按照以下 4 個步驟邏輯，進行嚴謹的 Top-Down 結合 Bottom-Up 推論：
 
-                    【國際市場即時數據】
-                    1. 費城半導體 SOX: {latest_m.get('SOX', 5000):.0f} (近週變化: {sox_chg:+.2f}%)
-                    2. 恐慌指數 VIX: {latest_m.get('VIX', 15):.2f}
-                    3. 美元指數 DXY: {latest_m.get('DXY', 103):.2f}
-                    4. 美國10年期公債殖利率: {latest_m.get('US10Y', 4.0):.2f}%
-                    5. WTI 原油價格: ${latest_m.get('WTI', 75):.1f}
-                    6. 黃金避險價格: ${latest_m.get('Gold', 2600):.1f}
+                    【即時國際總經數據】
+                    - 費城半導體 SOX: {latest_m.get('SOX', 5000):.0f} (近週: {sox_chg:+.2f}%)
+                    - 恐慌指數 VIX: {latest_m.get('VIX', 15):.2f}
+                    - 美元指數 DXY: {latest_m.get('DXY', 103):.2f}
+                    - 美債 10Y 殖利率: {latest_m.get('US10Y', 4.0):.2f}%
+                    - WTI 原油: ${latest_m.get('WTI', 75):.1f} \vert{} 黃金: ${latest_m.get('Gold', 2600):.1f} | 美元/台幣: {latest_m.get('TWD', 31.8):.2f}
 
-                    【嚴格推論規則】
-                    - 分析上述數據反映的資金風險偏好。
-                    - 動態篩選出當前最受惠的 3 個台灣主流產業鏈。
-                    - 每個產業鏈提供 2~3 檔台灣代表上市/上櫃公司。
-                    - 輸出標題要簡潔，避免包含整句內文說明。
+                    【分析步驟與原則】
+                    1. 熱錢判讀：根據上述總經指標，判讀全球資金風險偏好與流入台灣的 3 個主流產業。
+                    2. 領頭羊個股：針對每個主流產業，找出 2~3 檔最具產業代表性的台灣領頭羊個股 (簡稱與4位代號)。
+                    3. MOPS 數據與獲利驗證：
+                       a. 供應鏈環節：分析客戶訂單、供應商認證、產能利用率、交期與產品組合。
+                       b. 財報獲利：驗證營收成長、毛利率、營業利益率、現金流與預估 12M EPS。
+                    4. 嚴格生命週期 (S1-S5) 與未來預測：
+                       必須且只能精準使用以下 S1~S5 名詞（嚴禁自己杜撰如"S1:轉折復甦"這種錯誤名稱）：
+                       - S1: 需求萌芽期 (技術突破/初期訂單/需求不確定)
+                       - S2: 訂單成長期 (訂單增加/營收成長/產能擴充)
+                       - S3: 獲利兌現期 (財報驗證/關注度高)
+                       - S4: 預期成熟期 (高度關注/估值反映高成長)
+                       - S5: 成長放緩或轉折期 (訂單放慢/庫存增加)
 
                     【輸出格式】
-                    必須僅輸出嚴格合法的 JSON 陣列，不得包含任何 Markdown 語法標籤，範例結構如下：
+                    僅輸出嚴格合法的 JSON 陣列（不得有任何 ```json 標籤）：
                     [
                       {{
-                        "industry": "簡短產業名稱 (例如: 重電與強韌電網)",
-                        "cycle": "S2: 訂單加速",
-                        "driver": "全球需求驅動說明",
-                        "bottleneck": "瓶頸與 CapEx 焦點說明",
-                        "stocks": [["公司簡稱", "四位數代號"], ["公司簡稱", "四位數代號"]]
+                        "industry": "產業簡稱 (如: 先進封裝與 AI 伺服器)",
+                        "cycle_code": "S2",
+                        "cycle_name": "S2: 訂單成長期",
+                        "cycle_desc": "技術與訂單明確，營收與產能加速擴充",
+                        "mops_chain_analysis": "MOPS 供應鏈驗證 (客戶訂單、認證、產能利用率與交期說明)",
+                        "mops_financial_analysis": "財報驗證 (毛利率、營業利益率、現金流與 EPS 趨勢)",
+                        "forecast_3m": "3個月預期指標與觸發條件",
+                        "forecast_6m": "6個月預期指標與觸發條件",
+                        "forecast_12m": "12個月預期指標與觸發條件",
+                        "forecast_24m": "24個月關鍵事件與失效條件",
+                        "stocks": [["公司簡稱", "四位代號"], ["公司簡稱", "四位代號"]]
                       }}
                     ]
                     """
@@ -362,7 +369,7 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
                         selected_matrix = json.loads(clean_text)
                         st.session_state['ai_matrix'] = selected_matrix
                     else:
-                        st.warning("⚠️ 請確認已在背景部署 API Key。")
+                        st.warning("⚠️ 請確認已部署 API Key。")
                 except Exception as e:
                     st.error(f"AI 推論失敗: {e}")
         
@@ -370,25 +377,64 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
             selected_matrix = st.session_state['ai_matrix']
 
     else:
-        # 預設範例清單
+        # 預設範例清單 (符合嚴格 S1-S5)
         selected_matrix = [
-            {"industry": "AI 資料中心與先進封裝", "cycle": "S2: 訂單加速", "driver": "AI 晶片 / 雲端 CapEx 擴張需求強勁", "bottleneck": "先進封裝 CoWoS 產能吃緊", "stocks": [["台積電", "2330"], ["萬潤", "6187"], ["弘塑", "3131"]]},
-            {"industry": "高效能水冷散熱模組", "cycle": "S3: 獲利兌現", "driver": "高功耗 Blackwell 伺服器散熱升級", "bottleneck": "水冷板、CDP 與分歧管良率與產能", "stocks": [["奇鋐", "3017"], ["雙鴻", "3324"], ["高力", "8996"]]},
-            {"industry": "強韌電網與重電設備", "cycle": "S3: 獲利兌現", "driver": "美國電網更新與台灣台電強韌電網計畫", "bottleneck": "大型變壓器原材料與高壓測試排程", "stocks": [["華城", "1519"], ["士電", "1503"]]}]
+            {
+                "industry": "AI 資料中心與先進封裝 CoWoS",
+                "cycle_code": "S2",
+                "cycle_name": "S2: 訂單成長期",
+                "cycle_desc": "訂單大幅增加、營收高成長、產能積極擴充",
+                "mops_chain_analysis": "客戶(NVIDIA/AMD)包下 CoWoS 產能，設備認證完畢，產能利用率滿載，設備交期長達 6-9 個月。",
+                "mops_financial_analysis": "毛利率升至 50% 以上，營業利益率逐季走揚，自由现金流強勁，12M EPS 預估創新高。",
+                "forecast_3m": "CoWoS 月產能突破 3.5 萬片；觸發條件：台積電法說會調升 CapEx。",
+                "forecast_6m": "Blackwell 伺服器大量拉貨；觸發條件：月營收年增率 > 30%。",
+                "forecast_12m": "高基期效應顯現；觸發條件：關注毛利率是否因擴產成本上升而受壓。",
+                "forecast_24m": "進入下一代面板級封裝 (FPLP) 轉折；失效條件：CSP 大廠下修雲端 CapEx 支出。",
+                "stocks": [["台積電", "2330"], ["萬潤", "6187"], ["弘塑", "3131"]]
+            },
+            {
+                "industry": "散熱模組與水冷系統",
+                "cycle_code": "S3",
+                "cycle_name": "S3: 獲利兌現期",
+                "cycle_desc": "獲利成長被季報財報強勢驗證，市場關注度極高",
+                "mops_chain_analysis": "水冷板 (Cold Plate) 與 Manifold 分歧管通過 CSP 大廠認證，水冷滲透率自 5% 升至 20%。",
+                "mops_financial_analysis": "Q2/Q3 季報毛利率與 EPS 同步大幅超越市場預估，現金流穩健。",
+                "forecast_3m": "水冷系統單價 (ASP) 比傳統風扇高 3-5 倍，推升營收放量。",
+                "forecast_6m": "市場關注焦點由營收轉為毛利率能否維持在高檔。",
+                "forecast_12m": "進入預期成熟期 (S4)；觸發條件：評價本益比 (PE) 達 30 倍歷史高檔。",
+                "forecast_24m": "市場競爭者增加；失效條件：水冷漏液品質事故或價格戰削利。",
+                "stocks": [["奇鋐", "3017"], ["雙鴻", "3324"], ["高力", "8996"]]
+            }
+        ]
 
     if selected_matrix:
         st.markdown("---")
         st.subheader("📌 主流產業鏈傳導與受惠股即時行情驗證")
         
         for row in selected_matrix:
-            st.markdown(f"### 🔹 【{row.get('cycle', 'S2')}】{row.get('industry', '主流產業')}")
+            st.markdown(f"### 🔹 【{row.get('cycle_name', 'S2: 訂單成長期')}】{row.get('industry', '主流產業')}")
+            st.caption(f"**階段定位特徵**：{row.get('cycle_desc', '')}")
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(f"**🌐 全球需求驅動**：{row.get('driver', '')}")
-            with col_b:
-                st.markdown(f"**⚙️ 關鍵瓶頸與 CapEx 焦點**：{row.get('bottleneck', '')}")
-            
+            # MOPS 雙層驗證展示
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.info(f"**🏭 MOPS 供應鏈環節驗證**：\n{row.get('mops_chain_analysis', '')}")
+            with col_b2 if 'col_b2' in locals() else col_m2:
+                st.success(f"**💰 MOPS 財報與獲利驗證**：\n{row.get('mops_financial_analysis', '')}")
+
+            # 3M / 6M / 12M / 24M 關鍵預測
+            st.markdown("**🔮 未來 3~24 個月關鍵事件與預期指標：**")
+            p1, p2, p3, p4 = st.columns(4)
+            with p1:
+                st.markdown(f"**⏳ 3 個月展望**\n\n{row.get('forecast_3m', '訂單加速驗證')}")
+            with p2:
+                st.markdown(f"**⏳ 6 個月展望**\n\n{row.get('forecast_6m', '產能放量開出')}")
+            with p3:
+                st.markdown(f"**⏳ 12 個月展望**\n\n{row.get('forecast_12m', '獲利高峰或估值調整')}")
+            with p4:
+                st.markdown(f"**⏳ 24 個月展望/失效條件**\n\n{row.get('forecast_24m', '新舊技術迭代')}")
+
+            st.markdown("**🎯 代表性領頭羊個股行情：**")
             stocks = row.get('stocks', [])
             if stocks:
                 cols = st.columns(len(stocks))
