@@ -317,7 +317,7 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
                     prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
                     sox_chg = ((latest_m.get('SOX', 5000) - prev_m.get('SOX', 5000)) / prev_m.get('SOX', 5000)) * 100
 
-                    # 嚴格包含 S1~S5 字典定義與 4 步驟架構的硬核 Prompt
+                    # 嚴格包含 S1~S5 字典定義與 4 步驟架構的 Prompt (修正語法)
                     summary_prompt = f"""
                     你是頂尖機構法人總經與台股產業策略總監。請嚴格按照以下 4 個步驟邏輯，進行嚴謹的 Top-Down 結合 Bottom-Up 推論：
 
@@ -385,7 +385,7 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
                 "cycle_name": "S2: 訂單成長期",
                 "cycle_desc": "訂單大幅增加、營收高成長、產能積極擴充",
                 "mops_chain_analysis": "客戶(NVIDIA/AMD)包下 CoWoS 產能，設備認證完畢，產能利用率滿載，設備交期長達 6-9 個月。",
-                "mops_financial_analysis": "毛利率升至 50% 以上，營業利益率逐季走揚，自由现金流強勁，12M EPS 預估創新高。",
+                "mops_financial_analysis": "毛利率升至 50% 以上，營業利益率逐季走揚，自由現金流強勁，12M EPS 預估創新高。",
                 "forecast_3m": "CoWoS 月產能突破 3.5 萬片；觸發條件：台積電法說會調升 CapEx。",
                 "forecast_6m": "Blackwell 伺服器大量拉貨；觸發條件：月營收年增率 > 30%。",
                 "forecast_12m": "高基期效應顯現；觸發條件：關注毛利率是否因擴產成本上升而受壓。",
@@ -418,9 +418,9 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
             # MOPS 雙層驗證展示
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                st.info(f"**🏭 MOPS 供應鏈環節驗證**：\n{row.get('mops_chain_analysis', '')}")
-            with col_b2 if 'col_b2' in locals() else col_m2:
-                st.success(f"**💰 MOPS 財報與獲利驗證**：\n{row.get('mops_financial_analysis', '')}")
+                st.info(f"**🏭 MOPS 供應鏈環節驗證**：\n\n{row.get('mops_chain_analysis', '')}")
+            with col_m2:
+                st.success(f"**💰 MOPS 財報與獲利驗證**：\n\n{row.get('mops_financial_analysis', '')}")
 
             # 3M / 6M / 12M / 24M 關鍵預測
             st.markdown("**🔮 未來 3~24 個月關鍵事件與預期指標：**")
