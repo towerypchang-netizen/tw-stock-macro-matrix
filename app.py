@@ -55,7 +55,7 @@ st.title("📈 台股八階段預測與總經分析系統 APP")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
 
 # ---------------------------------------------------------
-# 2. 全域數據穩定抓取邏輯 (徹底解決 DXY nan 問題)
+# 2. 全域數據穩定抓取邏輯 (確保跨國日期完全對齊與無 NaN)
 # ---------------------------------------------------------
 @st.cache_data(ttl=1800)
 def load_stable_macro_data():
@@ -70,23 +70,29 @@ def load_stable_macro_data():
         'TWD': 'TWD=X'         # 美元/台幣
     }
     
-    df = pd.DataFrame()
+    # 批次下載歷史價格
+    raw = yf.download(list(tickers.values()), period="3mo", interval="1d")['Close']
+    
+    # 去除時區影響以正確對齊台美開盤日
+    if isinstance(raw.index, pd.DatetimeIndex):
+        raw.index = raw.index.tz_localize(None)
+        
+    df = pd.DataFrame(index=raw.index)
     for name, sym in tickers.items():
-        try:
-            t = yf.Ticker(sym)
-            h = t.history(period="3mo")['Close']
-            if not h.empty:
-                df[name] = h
-        except Exception:
-            pass
-
-    # 備援機制：如果 DXY 仍缺失，強制抓取代碼或估算
+        if sym in raw.columns:
+            df[name] = raw[sym]
+            
+    # 如果 DXY 仍有空值，單獨補抓
     if 'DXY' not in df.columns or df['DXY'].isna().all():
         try:
-            df['DXY'] = yf.Ticker("UUP").history(period="3mo")['Close'] * 3.6
+            dxy_h = yf.Ticker("DX-Y=F").history(period="3mo")['Close']
+            if isinstance(dxy_h.index, pd.DatetimeIndex):
+                dxy_h.index = dxy_h.index.tz_localize(None)
+            df['DXY'] = dxy_h
         except Exception:
             df['DXY'] = 103.5
 
+    # 強制執行連續前向與後向填充，徹底消滅 NaN
     df = df.ffill().bfill()
     return df
 
@@ -192,7 +198,7 @@ def render_tw_card(title, value_str, diff_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經儀表板 (修復 Plotly 語法)
+# 工具 1：全球資金與總經儀表板 (已修正多曲線繪製)
 # ---------------------------------------------------------
 if selected_tool == "核心工具 1：全球資金與總經儀表板":
     st.header("🌐 核心工具 1：全球資金與總經儀表板")
@@ -233,30 +239,46 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
         st.error("🟢 目前資金環境偏向「風險規避 (Risk-Off)」，建議提高防禦持股與現金比重。")
 
     st.markdown("---")
-    st.subheader("📈 全球資金總經 vs 台股加權指數 累積漲跌幅 (%) 敏感度趨勢圖")
-    st.caption("將各指標轉換為「累積變動百分比 (%)」，並強制自動緊密縮放 Y 軸，讓微小波動與拐點轉折極度清晰！")
+    st.subheader("📈 全球資金總經 vs 台股加權指數 累積漲跌幅 (%) 聯動趨勢圖")
+    st.caption("將各指標基期對齊並轉換為「累積變動百分比 (%)」，確保所有國際曲線同步顯現。")
 
     chart_days = st.slider("選擇圖表觀察天數 (天)：", min_value=14, max_value=90, value=30)
     
-    df_chart = df_top[['TAIEX', 'SOX', 'DXY', 'US10Y', 'WTI', 'Gold']].tail(chart_days).copy()
+    # 擷取指定天數數據並確保完全對齊
+    df_sub = df_top.tail(chart_days).dropna(how='all').copy()
+    df_sub = df_sub.ffill().bfill()
     
-    # 計算累積百分比變化 % (Cumulative Percentage Change)
-    df_pct = ((df_chart / df_chart.iloc[0]) - 1) * 100
+    # 計算以選定天數第一天為基期的累積漲跌幅 (%)
+    base_row = df_sub.iloc[0]
+    df_pct = pd.DataFrame(index=df_sub.index)
+    
+    cols_map = {
+        'TAIEX': ('台股加權指數', '#FF3333', 3, 'solid'),
+        'SOX': ('費半 SOX', '#00CC66', 2, 'solid'),
+        'DXY': ('美元指數 DXY', '#00BFFF', 2, 'dot'),
+        'US10Y': ('美債 10Y 殖利率', '#FFA500', 2, 'dash'),
+        'WTI': ('WTI 原油', '#8A2BE2', 1.5, 'solid'),
+        'Gold': ('黃金現貨', '#FFD700', 1.5, 'solid')
+    }
 
-    # 繪製 Plotly 高放大係數圖表 (更正相容語法)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['TAIEX'], mode='lines', name='台股加權指數', line=dict(color='#FF3333', width=3)))
-    fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['SOX'], mode='lines', name='費半 SOX', line=dict(color='#00CC66', width=2)))
-    fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['DXY'], mode='lines', name='美元指數 DXY', line=dict(color='#00BFFF', width=2, dash='dot')))
-    fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['US10Y'], mode='lines', name='美債 10Y 殖利率', line=dict(color='#FFA500', width=2, dash='dash')))
-    fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['WTI'], mode='lines', name='WTI 原油', line=dict(color='#8A2BE2', width=1.5)))
-    fig.add_trace(go.Scatter(x=df_pct.index, y=df_pct['Gold'], mode='lines', name='黃金現貨', line=dict(color='#FFD700', width=1.5)))
+    for col_key, (disp_name, color_hex, width_px, dash_style) in cols_map.items():
+        if col_key in df_sub.columns and base_row[col_key] > 0:
+            pct_series = ((df_sub[col_key] - base_row[col_key]) / base_row[col_key]) * 100
+            fig.add_trace(go.Scatter(
+                x=pct_series.index,
+                y=pct_series,
+                mode='lines',
+                name=disp_name,
+                connectgaps=True,
+                line=dict(color=color_hex, width=width_px, dash=dash_style)
+            ))
 
     fig.update_layout(
         template="plotly_dark",
-        height=450,
+        height=480,
         margin=dict(l=20, r=20, t=30, b=20),
-        yaxis=dict(title="累積漲跌幅 (%)", zeroline=True, zerolinecolor="#555"),
+        yaxis=dict(title="累積漲跌幅 (%)", zeroline=True, zerolinecolor="#555555"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
