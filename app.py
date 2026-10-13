@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 # 1. 頁面基本配置與頂端置頂凍結列 CSS 注入
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="台股八階段預測與總經分析系統 APP",
+    page_title="台股總經資金流與產業供應鏈 AI 評估系統",
     page_icon="📈",
     layout="wide"
 )
@@ -51,7 +51,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 台股八階段預測與總經分析系統 APP")
+st.title("📈 台股總經資金流與產業供應鏈 AI 評估系統")
 st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | Gemini AI 總經推論 | 嚴禁 AI 杜撰行情數據")
 
 # ---------------------------------------------------------
@@ -154,7 +154,7 @@ with tc8:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 3. 側邊欄（Sidebar）：按鈕式切換
+# 3. 側邊欄（Sidebar）：按鈕式切換與代號輸入整合
 # ---------------------------------------------------------
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
@@ -181,6 +181,12 @@ btn_tool3 = st.sidebar.button(
     type="primary" if st.session_state['selected_tool'] == "個股基本面與 ROI 評分表" else "secondary"
 )
 
+# 當選取個股基本面時，直接在按鈕下方顯示代號輸入框
+stock_code_input = "6187"
+if st.session_state['selected_tool'] == "個股基本面與 ROI 評分表":
+    st.sidebar.markdown("---")
+    stock_code_input = st.sidebar.text_input("🔍 輸入台股代號（例：6187 或 2330）：", value="6187")
+
 if btn_tool1:
     st.session_state['selected_tool'] = "全球資金與總經環境評分"
     st.rerun()
@@ -192,13 +198,6 @@ elif btn_tool3:
     st.rerun()
 
 selected_tool = st.session_state['selected_tool']
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔄 八階段動態反饋流程")
-st.sidebar.caption(
-    "1. 全球總經 ➔ 2. 資金風險偏好 ➔ 3. 產業主流(S1-S5) ➔ 4. 台灣供應鏈 ➔ "
-    "5. 基本面與估值 ➔ 6. 技術籌碼 ➔ 7. 事件與風控 ➔ 8. 追蹤驗證與修正"
-)
 
 def render_tw_card(title, value_str, diff_val):
     if pd.isna(diff_val) or diff_val == 0:
@@ -298,7 +297,7 @@ if selected_tool == "全球資金與總經環境評分":
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (點選直接執行 AI 總經與 MOPS 驗證推論)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI推論)
 # ---------------------------------------------------------
 elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
     c_head1, c_head2 = st.columns([0.8, 0.2])
@@ -306,12 +305,11 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
         st.header("🏭 產業趨勢與台灣供應鏈矩陣 (AI推論)")
         st.write("嚴格執行 4 步驟推論：總經熱錢走向 ➔ 篩選領頭羊個股 ➔ MOPS/財報供應鏈與獲利驗證 ➔ 嚴格 S1-S5 週期與 3/6/12/24M 情境預測。")
     with c_head2:
-        if st.button("🔄 重新重新推論分析"):
+        if st.button("🔄 重新推論分析"):
             if 'ai_matrix' in st.session_state:
                 del st.session_state['ai_matrix']
             st.rerun()
 
-    # 直接自動檢查，無快取即自動執行推論
     if 'ai_matrix' not in st.session_state:
         with st.spinner("AI 正在連線分析國際熱錢流向、對比 MOPS 公開資訊觀測站數據並演算 3/6/12/24M 關鍵情境..."):
             try:
@@ -433,13 +431,13 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
             st.markdown("<hr style='border:1px dashed #333;'>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 3：個股基本面與 ROI 評分表
+# 工具 3：個股基本面與 ROI 評分表 (接收左側輸入之個股代號)
 # ---------------------------------------------------------
 elif selected_tool == "個股基本面與 ROI 評分表":
     st.header("📊 個股基本面與 ROI 評分表")
     st.write("每月更新財務、EPS、估值區間、籌碼與三情境 ROI 分析。")
     
-    stock_code = st.text_input("請輸入台股代號（例如：6187 或 2330）：", "6187")
+    stock_code = stock_code_input.strip()
     
     if stock_code:
         fetched_price = None
@@ -459,10 +457,10 @@ elif selected_tool == "個股基本面與 ROI 評分表":
                     pass
         
         if fetched_price:
-            st.success(f"✅ 連線成功！{stock_code} 最新真實收盤價： **${fetched_price:.2f} 元**")
+            st.success(f"✅ 連線成功！個股 ({stock_code}) 最新真實收盤價： **${fetched_price:.2f} 元**")
             current_price = fetched_price
         else:
-            st.warning("⚠️ 未能自動取得股價，請手動確認。")
+            st.warning(f"⚠️ 未能自動取得代號 {stock_code} 之股價，請手動確認。")
             current_price = 1000.0
 
         base_eps_val = float(trailing_eps) if trailing_eps and trailing_eps > 0 else round(current_price / 25.0, 2)
