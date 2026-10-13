@@ -317,15 +317,23 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
                     prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
                     sox_chg = ((latest_m.get('SOX', 5000) - prev_m.get('SOX', 5000)) / prev_m.get('SOX', 5000)) * 100
 
-                    # 100% 安全無特殊轉義符號的 Prompt
+                    # 採用最乾淨安全的字串格式，完全消除 f-string 特殊字元與轉義反斜線
+                    v_sox = round(float(latest_m.get('SOX', 5000)))
+                    v_vix = round(float(latest_m.get('VIX', 15)), 2)
+                    v_dxy = round(float(latest_m.get('DXY', 103)), 2)
+                    v_us10y = round(float(latest_m.get('US10Y', 4.0)), 2)
+                    v_wti = round(float(latest_m.get('WTI', 75)), 1)
+                    v_gold = round(float(latest_m.get('Gold', 2600)), 1)
+                    v_twd = round(float(latest_m.get('TWD', 31.8)), 2)
+
                     summary_prompt = (
                         "你是頂尖機構法人總經與台股產業策略總監。請嚴格按照以下 4 個步驟邏輯，進行嚴謹的 Top-Down 結合 Bottom-Up 推論：\n\n"
                         "【即時國際總經數據】\n"
-                        f"- 費城半導體 SOX: {latest_m.get('SOX', 5000):.0f} (近週: {sox_chg:+.2f}%)\n"
-                        f"- 恐慌指數 VIX: {latest_m.get('VIX', 15):.2f}\n"
-                        f"- 美元指數 DXY: {latest_m.get('DXY', 103):.2f}\n"
-                        f"- 美債 10Y 殖利率: {latest_m.get('US10Y', 4.0):.2f}%\n"
-                        f"- WTI 原油: ${latest_m.get('WTI', 75):.1f} \vert{} 黃金: ${latest_m.get('Gold', 2600):.1f} | 美元/台幣: {latest_m.get('TWD', 31.8):.2f}\n\n"
+                        "1. 費城半導體 SOX: " + str(v_sox) + " (近週: " + f"{sox_chg:+.2f}" + "%)\n"
+                        "2. 恐慌指數 VIX: " + str(v_vix) + "\n"
+                        "3. 美元指數 DXY: " + str(v_dxy) + "\n"
+                        "4. 美債 10Y 殖利率: " + str(v_us10y) + "%\n"
+                        "5. WTI 原油: $" + str(v_wti) + " \vert{} 黃金: $" + str(v_gold) + " | 美元/台幣: " + str(v_twd) + "\n\n"
                         "【分析步驟與原則】\n"
                         "1. 熱錢判讀：根據上述總經指標，判讀全球資金風險偏好與流入台灣的 3 個主流產業。\n"
                         "2. 領頭羊個股：針對每個主流產業，找出 2~3 檔最具產業代表性的台灣領頭羊個股 (簡稱與4位代號)。\n"
