@@ -317,7 +317,7 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
                     prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
                     sox_chg = ((latest_m.get('SOX', 5000) - prev_m.get('SOX', 5000)) / prev_m.get('SOX', 5000)) * 100
 
-                    # 嚴格包含 S1~S5 字典定義與 4 步驟架構的 Prompt (修正語法)
+                    # 修正標準 Python f-string 格式
                     summary_prompt = f"""
                     你是頂尖機構法人總經與台股產業策略總監。請嚴格按照以下 4 個步驟邏輯，進行嚴謹的 Top-Down 結合 Bottom-Up 推論：
 
@@ -415,14 +415,12 @@ elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
             st.markdown(f"### 🔹 【{row.get('cycle_name', 'S2: 訂單成長期')}】{row.get('industry', '主流產業')}")
             st.caption(f"**階段定位特徵**：{row.get('cycle_desc', '')}")
             
-            # MOPS 雙層驗證展示
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 st.info(f"**🏭 MOPS 供應鏈環節驗證**：\n\n{row.get('mops_chain_analysis', '')}")
             with col_m2:
                 st.success(f"**💰 MOPS 財報與獲利驗證**：\n\n{row.get('mops_financial_analysis', '')}")
 
-            # 3M / 6M / 12M / 24M 關鍵預測
             st.markdown("**🔮 未來 3~24 個月關鍵事件與預期指標：**")
             p1, p2, p3, p4 = st.columns(4)
             with p1:
