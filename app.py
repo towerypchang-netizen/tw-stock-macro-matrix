@@ -70,10 +70,8 @@ def load_stable_macro_data():
         'TWD': 'TWD=X'         # 美元/台幣
     }
     
-    # 下載數據
     raw = yf.download(list(tickers.values()), period="3mo", interval="1d")['Close']
     
-    # 消除時區標籤以對齊台美開盤日
     if isinstance(raw.index, pd.DatetimeIndex):
         raw.index = raw.index.tz_localize(None)
         
@@ -82,7 +80,7 @@ def load_stable_macro_data():
         if sym in raw.columns:
             df[name] = raw[sym]
             
-    # 美元指數 DXY 多重備援防護，徹底排除 nan
+    # DXY 多重備援防護，徹底排除 nan
     if 'DXY' not in df.columns or df['DXY'].isna().all():
         for fallback_sym in ["DX-Y=F", "DX=F", "UUP"]:
             try:
@@ -98,7 +96,6 @@ def load_stable_macro_data():
     if 'DXY' not in df.columns or df['DXY'].isna().all():
         df['DXY'] = 103.5
 
-    # 補全缺失值
     df = df.ffill().bfill()
     return df
 
@@ -158,26 +155,47 @@ with tc8:
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 3. 側邊欄（Sidebar）與工具導航
+# 3. 側邊欄（Sidebar）：按鈕式切換與流程簡介
 # ---------------------------------------------------------
-st.sidebar.header("⚙️ 系統導覽與 API 設定")
+api_key = st.secrets.get("GEMINI_API_KEY", "")
 
-default_api_key = st.secrets.get("GEMINI_API_KEY", "")
+st.sidebar.subheader("🎯 核心分析工具區")
 
-if default_api_key:
-    st.sidebar.success("🔑 已自動載入背景 API Key")
-    api_key = default_api_key
-else:
-    api_key = st.sidebar.text_input("Gemini API Key (用於工具2 AI動態推論)", type="password")
+# 狀態記錄：預設選擇第一個工具
+if 'selected_tool' not in st.session_state:
+    st.session_state['selected_tool'] = "全球資金與總經環境評分"
 
-selected_tool = st.sidebar.radio(
-    "核心分析工具區",
-    [
-        "核心工具 1：全球資金與總經環境評分",
-        "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)",
-        "核心工具 3：個股基本面與 ROI 評分表"
-    ]
+# 三個按鈕
+btn_tool1 = st.sidebar.button(
+    "🌐 全球資金與總經環境評分",
+    use_container_width=True,
+    type="primary" if st.session_state['selected_tool'] == "全球資金與總經環境評分" else "secondary"
 )
+
+btn_tool2 = st.sidebar.button(
+    "🏭 產業趨勢與台灣供應鏈矩陣 (AI推論)",
+    use_container_width=True,
+    type="primary" if st.session_state['selected_tool'] == "產業趨勢與台灣供應鏈矩陣 (AI推論)" else "secondary"
+)
+
+btn_tool3 = st.sidebar.button(
+    "📊 個股基本面與 ROI 評分表",
+    use_container_width=True,
+    type="primary" if st.session_state['selected_tool'] == "個股基本面與 ROI 評分表" else "secondary"
+)
+
+# 按鈕點擊更新狀態
+if btn_tool1:
+    st.session_state['selected_tool'] = "全球資金與總經環境評分"
+    st.rerun()
+elif btn_tool2:
+    st.session_state['selected_tool'] = "產業趨勢與台灣供應鏈矩陣 (AI推論)"
+    st.rerun()
+elif btn_tool3:
+    st.session_state['selected_tool'] = "個股基本面與 ROI 評分表"
+    st.rerun()
+
+selected_tool = st.session_state['selected_tool']
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔄 八階段動態反饋流程")
@@ -204,10 +222,10 @@ def render_tw_card(title, value_str, diff_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經環境評分 (整合全指標趨勢圖)
+# 工具 1：全球資金與總經環境評分
 # ---------------------------------------------------------
-if selected_tool == "核心工具 1：全球資金與總經環境評分":
-    st.header("🌐 核心工具 1：全球資金與總經環境評分")
+if selected_tool == "全球資金與總經環境評分":
+    st.header("🌐 全球資金與總經環境評分")
     st.write("即時總經數據已置頂於頂端列。本區提供「全球資金環境綜合評分」與「全指標 vs 台股加權 聯動對比圖」。")
 
     st.subheader("📊 全球資金環境評分模型")
@@ -233,7 +251,6 @@ if selected_tool == "核心工具 1：全球資金與總經環境評分":
 
     chart_days = st.slider("選擇圖表觀察天數 (天)：", min_value=14, max_value=90, value=30)
     
-    # 勾選想要顯示在圖表上的指標
     st.markdown("**選擇要在折線圖中對比的指標：**")
     chk_cols = st.columns(4)
     with chk_cols[0]:
@@ -252,7 +269,6 @@ if selected_tool == "核心工具 1：全球資金與總經環境評分":
     df_sub = df_top.tail(chart_days).dropna(how='all').copy().ffill().bfill()
     base_row = df_sub.iloc[0]
 
-    # 全 8 大指標映射表
     cols_map = {
         'TAIEX': ('台股加權指數', '#FF3333', 3, 'solid', show_taiex),
         'SOX': ('費半 SOX', '#00CC66', 2, 'solid', show_sox),
@@ -290,8 +306,8 @@ if selected_tool == "核心工具 1：全球資金與總經環境評分":
 # ---------------------------------------------------------
 # 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)
 # ---------------------------------------------------------
-elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)":
-    st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
+elif selected_tool == "產業趨勢與台灣供應鏈矩陣 (AI推論)":
+    st.header("🏭 產業趨勢與台灣供應鏈矩陣 (AI推論)")
     st.write("根據國際大盤、殖利率、匯率、VIX 與國際情勢，由 AI 動態推論主流產業傳導矩陣，並連線 Yahoo Finance 驗證行情。")
 
     mode = st.radio("模式選擇：", ["🤖 AI 總經即時動態推論", "📌 預設主流產業清單"])
@@ -299,60 +315,59 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
     selected_matrix = []
     
     if mode == "🤖 AI 總經即時動態推論":
-        if not api_key:
-            st.info("💡 請在左側欄位輸入 Gemini API Key（或至 Streamlit Secrets 設定），即可啟用 AI 總經動態推論功能。")
-        else:
-            if st.button("🚀 執行 AI 總經推論分析"):
-                with st.spinner("AI 正在深度判讀美元、殖利率、VIX、原油、黃金與全球資金流向進行 Top-Down 邏輯推論..."):
-                    try:
-                        macro_df = df_top.tail(20)
-                        latest_m = macro_df.iloc[-1]
-                        prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
-                        
-                        sox_chg = ((latest_m.get('SOX', 5000) - prev_m.get('SOX', 5000)) / prev_m.get('SOX', 5000)) * 100
+        if st.button("🚀 執行 AI 總經推論分析"):
+            with st.spinner("AI 正在深度判讀美元、殖利率、VIX、原油、黃金與全球資金流向進行 Top-Down 邏輯推論..."):
+                try:
+                    macro_df = df_top.tail(20)
+                    latest_m = macro_df.iloc[-1]
+                    prev_m = macro_df.iloc[-5] if len(macro_df) >= 5 else macro_df.iloc[0]
+                    
+                    sox_chg = ((latest_m.get('SOX', 5000) - prev_m.get('SOX', 5000)) / prev_m.get('SOX', 5000)) * 100
 
-                        summary_prompt = f"""
-                        你是頂尖法人的總經與產業策略總監。請徹底根據以下真實市場數據進行硬核 Top-Down 研研推論：
+                    summary_prompt = f"""
+                    你是頂尖法人的總經與產業策略總監。請徹底根據以下真實市場數據進行硬核 Top-Down 研研推論：
 
-                        【國際市場即時數據】
-                        1. 費城半導體 SOX: {latest_m.get('SOX', 5000):.0f} (近週變化: {sox_chg:+.2f}%)
-                        2. 恐慌指數 VIX: {latest_m.get('VIX', 15):.2f}
-                        3. 美元指數 DXY: {latest_m.get('DXY', 103):.2f}
-                        4. 美國10年期公債殖利率: {latest_m.get('US10Y', 4.0):.2f}%
-                        5. WTI 原油價格: ${latest_m.get('WTI', 75):.1f}
-                        6. 黃金避險價格: ${latest_m.get('Gold', 2600):.1f}
+                    【國際市場即時數據】
+                    1. 費城半導體 SOX: {latest_m.get('SOX', 5000):.0f} (近週變化: {sox_chg:+.2f}%)
+                    2. 恐慌指數 VIX: {latest_m.get('VIX', 15):.2f}
+                    3. 美元指數 DXY: {latest_m.get('DXY', 103):.2f}
+                    4. 美國10年期公債殖利率: {latest_m.get('US10Y', 4.0):.2f}%
+                    5. WTI 原油價格: ${latest_m.get('WTI', 75):.1f}
+                    6. 黃金避險價格: ${latest_m.get('Gold', 2600):.1f}
 
-                        【嚴格推論規則】
-                        - 分析上述數據反映的資金風險偏好。
-                        - 動態篩選出當前最受惠的 3 個台灣主流產業鏈。
-                        - 每個產業鏈提供 2~3 檔台灣代表上市/上櫃公司。
-                        - 輸出標題要簡潔，避免包含整句內文說明。
+                    【嚴格推論規則】
+                    - 分析上述數據反映的資金風險偏好。
+                    - 動態篩選出當前最受惠的 3 個台灣主流產業鏈。
+                    - 每個產業鏈提供 2~3 檔台灣代表上市/上櫃公司。
+                    - 輸出標題要簡潔，避免包含整句內文說明。
 
-                        【輸出格式】
-                        必須僅輸出嚴格合法的 JSON 陣列，不得包含任何 Markdown 語法標籤，範例結構如下：
-                        [
-                          {{
-                            "industry": "簡短產業名稱 (例如: 重電與強韌電網)",
-                            "cycle": "S2: 訂單加速",
-                            "driver": "全球需求驅動說明",
-                            "bottleneck": "瓶頸與 CapEx 焦點說明",
-                            "stocks": [["公司簡稱", "四位數代號"], ["公司簡稱", "四位數代號"]]
-                          }}
-                        ]
-                        """
-                        
+                    【輸出格式】
+                    必須僅輸出嚴格合法的 JSON 陣列，不得包含任何 Markdown 語法標籤，範例結構如下：
+                    [
+                      {{
+                        "industry": "簡短產業名稱 (例如: 重電與強韌電網)",
+                        "cycle": "S2: 訂單加速",
+                        "driver": "全球需求驅動說明",
+                        "bottleneck": "瓶頸與 CapEx 焦點說明",
+                        "stocks": [["公司簡稱", "四位數代號"], ["公司簡稱", "四位數代號"]]
+                      }}
+                    ]
+                    """
+                    
+                    if api_key:
                         genai.configure(api_key=api_key)
                         model = genai.GenerativeModel('gemini-3.5-flash')
                         res = model.generate_content(summary_prompt)
-                            
                         clean_text = res.text.replace("```json", "").replace("```", "").strip()
                         selected_matrix = json.loads(clean_text)
                         st.session_state['ai_matrix'] = selected_matrix
-                    except Exception as e:
-                        st.error(f"AI 推論失敗: {e}")
-            
-            if 'ai_matrix' in st.session_state:
-                selected_matrix = st.session_state['ai_matrix']
+                    else:
+                        st.warning("⚠️ 請確認已在背景部署 API Key。")
+                except Exception as e:
+                    st.error(f"AI 推論失敗: {e}")
+        
+        if 'ai_matrix' in st.session_state:
+            selected_matrix = st.session_state['ai_matrix']
 
     else:
         # 預設範例清單
@@ -401,8 +416,8 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
 # ---------------------------------------------------------
 # 工具 3：個股基本面與 ROI 評分表
 # ---------------------------------------------------------
-elif selected_tool == "核心工具 3：個股基本面與 ROI 評分表":
-    st.header("📊 核心工具 3：個股基本面與 ROI 評分表")
+elif selected_tool == "個股基本面與 ROI 評分表":
+    st.header("📊 個股基本面與 ROI 評分表")
     st.write("每月更新財務、EPS、估值區間、籌碼與三情境 ROI 分析。")
     
     stock_code = st.text_input("請輸入台股代號（例如：6187 或 2330）：", "6187")
