@@ -15,10 +15,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# 注入 CSS：實作置頂凍結列 (Sticky Top Bar) 與台股慣用紅漲綠跌樣式
 st.markdown("""
 <style>
-/* 頂端凍結區塊設定 */
 .sticky-top-bar {
     position: sticky;
     top: 2.8rem;
@@ -39,7 +37,7 @@ st.markdown("""
 }
 
 .sticky-card-title {
-    color: #888888;
+    color: #AAAAAA;
     font-size: 11px;
     margin-bottom: 2px;
 }
@@ -61,6 +59,7 @@ st.caption("限定資料來源：公開資訊觀測站 (MOPS) | Yahoo Finance | 
 @st.cache_data(ttl=1800)
 def load_top_sticky_data():
     tickers = {
+        'TAIEX': '^TWII',      # 台股加權指數
         'SOX': '^SOX',         # 費城半導體
         'DXY': 'DX-Y=F',       # 美元指數
         'US10Y': '^TNX',       # 10年期公債殖利率
@@ -69,11 +68,19 @@ def load_top_sticky_data():
         'Gold': 'GC=F',        # 黃金
         'TWD': 'TWD=X'         # 美元/台幣
     }
-    raw_data = yf.download(list(tickers.values()), period="1mo", interval="1d")['Close']
+    raw_data = yf.download(list(tickers.values()), period="3mo", interval="1d")['Close']
     df = pd.DataFrame()
     for name, symbol in tickers.items():
         if symbol in raw_data.columns:
             df[name] = raw_data[symbol]
+    
+    # 針對 DXY 特殊補值保護
+    if 'DXY' not in df.columns or df['DXY'].isna().all():
+        try:
+            df['DXY'] = yf.Ticker("DX-Y=F").history(period="3mo")['Close']
+        except Exception:
+            df['DXY'] = 103.5
+
     df = df.ffill().bfill()
     return df
 
@@ -82,7 +89,7 @@ try:
     latest_top = df_top.iloc[-1]
     prev_top = df_top.iloc[-2]
 except Exception:
-    latest_top = pd.Series({'SOX': 5000, 'DXY': 103.5, 'US10Y': 4.2, 'VIX': 15.0, 'WTI': 75.0, 'Gold': 2600, 'TWD': 31.8})
+    latest_top = pd.Series({'TAIEX': 22000, 'SOX': 5000, 'DXY': 103.5, 'US10Y': 4.2, 'VIX': 15.0, 'WTI': 75.0, 'Gold': 2600, 'TWD': 31.8})
     prev_top = latest_top
 
 def get_top_delta_html(val):
@@ -95,39 +102,44 @@ def get_top_delta_html(val):
 
 # 置頂凍結列 UI 渲染
 st.markdown('<div class="sticky-top-bar">', unsafe_allow_html=True)
-tc1, tc2, tc3, tc4, tc5, tc6, tc7 = st.columns(7)
+tc1, tc2, tc3, tc4, tc5, tc6, tc7, tc8 = st.columns(8)
 
 with tc1:
+    tw_val = latest_top.get('TAIEX', 22000)
+    tw_d = tw_val - prev_top.get('TAIEX', tw_val)
+    st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">台股加權</div><div class="sticky-card-value">{tw_val:.0f}</div><div>{get_top_delta_html(tw_d)}</div></div>', unsafe_allow_html=True)
+
+with tc2:
     sox_val = latest_top.get('SOX', 5000)
     sox_d = sox_val - prev_top.get('SOX', sox_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">費半 SOX</div><div class="sticky-card-value">{sox_val:.0f}</div><div>{get_top_delta_html(sox_d)}</div></div>', unsafe_allow_html=True)
 
-with tc2:
+with tc3:
     dxy_val = latest_top.get('DXY', 103.5)
     dxy_d = dxy_val - prev_top.get('DXY', dxy_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">美元 DXY</div><div class="sticky-card-value">{dxy_val:.2f}</div><div>{get_top_delta_html(dxy_d)}</div></div>', unsafe_allow_html=True)
 
-with tc3:
+with tc4:
     us10y_val = latest_top.get('US10Y', 4.2)
     us10y_d = us10y_val - prev_top.get('US10Y', us10y_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">美債 10Y</div><div class="sticky-card-value">{us10y_val:.2f}%</div><div>{get_top_delta_html(us10y_d)}</div></div>', unsafe_allow_html=True)
 
-with tc4:
+with tc5:
     vix_val = latest_top.get('VIX', 15.0)
     vix_d = vix_val - prev_top.get('VIX', vix_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">恐慌 VIX</div><div class="sticky-card-value">{vix_val:.2f}</div><div>{get_top_delta_html(vix_d)}</div></div>', unsafe_allow_html=True)
 
-with tc5:
+with tc6:
     wti_val = latest_top.get('WTI', 75.0)
     wti_d = wti_val - prev_top.get('WTI', wti_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">WTI 原油</div><div class="sticky-card-value">${wti_val:.1f}</div><div>{get_top_delta_html(wti_d)}</div></div>', unsafe_allow_html=True)
 
-with tc6:
+with tc7:
     gold_val = latest_top.get('Gold', 2600.0)
     gold_d = gold_val - prev_top.get('Gold', gold_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">黃金現貨</div><div class="sticky-card-value">${gold_val:.0f}</div><div>{get_top_delta_html(gold_d)}</div></div>', unsafe_allow_html=True)
 
-with tc7:
+with tc8:
     twd_val = latest_top.get('TWD', 31.8)
     twd_d = twd_val - prev_top.get('TWD', twd_val)
     st.markdown(f'<div class="sticky-card"><div class="sticky-card-title">美元/台幣</div><div class="sticky-card-value">{twd_val:.2f}</div><div>{get_top_delta_html(twd_d)}</div></div>', unsafe_allow_html=True)
@@ -181,7 +193,7 @@ def render_tw_card(title, value_str, diff_val):
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 工具 1：全球資金與總經儀表板
+# 工具 1：全球資金與總經儀表板 (含台股加權指數對比折線圖)
 # ---------------------------------------------------------
 if selected_tool == "核心工具 1：全球資金與總經儀表板":
     st.header("🌐 核心工具 1：全球資金與總經儀表板")
@@ -217,11 +229,30 @@ if selected_tool == "核心工具 1：全球資金與總經儀表板":
     else:
         st.error("🟢 目前資金環境偏向「風險規避 (Risk-Off)」，建議提高防禦持股與現金比重。")
 
-    st.subheader("📈 國際重要指標近期走勢圖")
-    st.line_chart(df_top[['SOX', 'DXY', 'VIX', 'TWD']].tail(30))
+    st.markdown("---")
+    st.subheader("📈 全球資金總經 vs 台股加權指數 聯動趨勢圖")
+    st.caption("基期歸一化 (以期初為 100%)，可精準對比費半、台股加權、美元與殖利率的相對走勢與轉折領先性。")
+
+    # 選擇觀察區間
+    chart_days = st.slider("選擇圖表觀察天數 (天)：", min_value=14, max_value=90, value=30)
+    
+    # 進行基期 100 歸一化計算
+    df_chart = df_top[['TAIEX', 'SOX', 'DXY', 'US10Y', 'VIX']].tail(chart_days).copy()
+    df_norm = (df_chart / df_chart.iloc[0]) * 100
+
+    # 欄位重新命名以利對比
+    df_norm.columns = [
+        '台股加權指數 (TAIEX)',
+        '費城半導體 (SOX)',
+        '美元指數 (DXY)',
+        '美債10Y殖利率 (US10Y)',
+        '恐慌指數 (VIX)'
+    ]
+
+    st.line_chart(df_norm)
 
 # ---------------------------------------------------------
-# 工具 2：產業趨勢與台灣供應鏈矩陣 (取消下拉選單，直接展開顯示)
+# 工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)
 # ---------------------------------------------------------
 elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI 推論)":
     st.header("🏭 核心工具 2：產業趨勢與台灣供應鏈矩陣")
@@ -298,7 +329,6 @@ elif selected_tool == "核心工具 2：產業趨勢與台灣供應鏈矩陣 (AI
         st.markdown("---")
         st.subheader("📌 主流產業鏈傳導與受惠股即時行情驗證")
         
-        # 取消 expander，採用直接展平排版 (無重複標題文字)
         for row in selected_matrix:
             st.markdown(f"### 🔹 【{row.get('cycle', 'S2')}】{row.get('industry', '主流產業')}")
             
